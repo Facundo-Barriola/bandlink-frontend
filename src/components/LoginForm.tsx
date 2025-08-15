@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image"; 
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
@@ -39,8 +40,17 @@ export default function LoginForm() {
   };
 
   return (
+<div className="min-h-screen flex items-center justify-center bg-gray-100">
     <div className="max-w-sm mx-auto mt-20 p-6 bg-white rounded-2xl shadow-lg">
-      <h2 className="text-2xl font-bold mb-4 text-center">Iniciar sesión</h2>
+        <div className="flex justify-center mb-4">
+          <Image
+            src="/logo-bandlink.png"
+            alt="Login Icon"
+            width={80}
+            height={80}
+          />
+        </div>
+      <h2 className="text-[#65558F] font-bold mb-4 text-center">BandLink</h2>
       {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <label htmlFor="email" className="text-[#65558F] font-medium">
@@ -74,7 +84,7 @@ export default function LoginForm() {
             Recordar contraseña
           </label>
         </div>
-        
+
         <button
           type="submit"
           className="bg-[#65558F] text-white py-2 rounded hover:bg-[#564A7A] transition"
@@ -83,5 +93,6 @@ export default function LoginForm() {
         </button>
       </form>
     </div>
+</div>
   );
 }
