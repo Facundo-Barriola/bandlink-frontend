@@ -18,7 +18,7 @@ export default function LoginForm() {
     }
 
     try {
-      const res = await fetch("http://localhost:3001/api/auth/login", {
+      const res = await fetch("http://localhost:4000/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -59,7 +59,7 @@ export default function LoginForm() {
         <input
           type="email"
           placeholder="Correo electrónico"
-          className="border p-2 rounded"
+          className="text-[#65558F] border p-2 rounded"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
@@ -69,7 +69,7 @@ export default function LoginForm() {
         <input
           type="password"
           placeholder="Contraseña"
-          className="border p-2 rounded"
+          className="text-[#65558F] border p-2 rounded"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
@@ -92,6 +92,14 @@ export default function LoginForm() {
           Login
         </button>
       </form>
+      <div className="mt-4 text-center">
+        <p className="text-[#65558F]">
+          ¿No tienes cuenta?{" "}
+          <a href="/register" className="text-[#564A7A] hover:underline">
+            Regístrate
+          </a>
+        </p>
+      </div>
     </div>
 </div>
   );
