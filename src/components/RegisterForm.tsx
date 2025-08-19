@@ -1,82 +1,98 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import  MusicianForm  from "@/components/MusicianForm";
-import Select from "react-select";
-import Image from "next/image";
 
-export default function RegisterForm(){
-    const [role, setRole] = useState<"musico" | "sala" | null>(null);
+export default function RegisterForm() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-    return(
-         <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      {!role && (
-        <Card className="w-[400px] shadow-xl rounded-2xl">
-          <CardHeader>
-            <CardTitle className="text-center">Registrarse como...</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Button
-              className="w-full"
-              onClick={() => setRole("musico")}
-            >
-              🎸 Músico
-            </Button>
-            <Button
-              className="w-full"
-              onClick={() => setRole("sala")}
-              variant="outline"
-            >
-              🏠 Sala de Ensayo
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
 
-      {role === "musico" && (
-        <MusicianForm />
-      )}
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("El email no es válido");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Las contraseñas no coinciden");
+      return;
+    }
 
-      {role === "sala" && (
-        <Card className="w-[400px] shadow-xl rounded-2xl">
-          <CardHeader>
-            <CardTitle className="text-center">Registro Sala de Ensayo</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <input
-              type="text"
-              placeholder="Nombre Sala"
-              className="border rounded-lg p-2"
-            />
-            <input
-              type="text"
-              placeholder="Dirección"
-              className="border rounded-lg p-2"
-            />
-            <input
-              type="email"
-              placeholder="Email"
-              className="border rounded-lg p-2"
-            />
-            <input
-              type="password"
-              placeholder="Contraseña"
-              className="border rounded-lg p-2"
-            />
-            <Button className="w-full">Registrarme</Button>
-            <Button
-              variant="ghost"
-              onClick={() => setRole(null)}
-              className="text-sm"
-            >
-              ⬅ Volver
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-    </div>
-    );
-};
+    try {
+      const res = await fetch("http://localhost:4000/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, confirmPassword }),
+      });
 
+      if (!res.ok) {
+        const { message } = await res.json();
+        throw new Error(message || "Error en el registro");
+      }
+
+      setSuccess("✅ Registro exitoso. Ya puedes iniciar sesión.");
+      setEmail("");
+      setPassword("");
+      setConfirmPassword("");
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="bg-white p-6 rounded-2xl shadow-md w-96"
+    >
+      <h2 className="text-xl font-bold mb-4 text-[#65558F]">Registro</h2>
+
+      {error && <p className="text-red-500 mb-3">{error}</p>}
+
+      <div className="mb-3">
+        <label className="block text-[#65558F] mb-1">Correo electrónico</label>
+        <input
+          type="email"
+          className="w-full border rounded-lg p-2 text-[#65558F]"
+          placeholder="tuemail@ejemplo.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+      </div>
+
+      <div className="mb-3">
+        <label className="block text-[#65558F] mb-1">Contraseña</label>
+        <input
+          type="password"
+          className="w-full border rounded-lg p-2 text-[#65558F]"
+          placeholder="********"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-[#65558F] mb-1">Repetir contraseña</label>
+        <input
+          type="password"
+          className="w-full border rounded-lg p-2 text-[#65558F]"
+          placeholder="********"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+        />
+      </div>
+
+      <button
+        type="submit"
+        className="w-full bg-[#65558F] text-white py-2 rounded-lg hover:bg-[#51447a] transition"
+      >
+        Registrarse
+      </button>
+    </form>
+  );
+}
