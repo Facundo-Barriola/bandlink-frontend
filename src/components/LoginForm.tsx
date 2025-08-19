@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image"; 
+import Image from "next/image";
+import { useRouter } from "next/navigation"; 
 
 export default function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,7 +20,7 @@ export default function LoginForm() {
     }
 
     try {
-      const res = await fetch("http://localhost:4000/api/auth/login", {
+      const res = await fetch("http://localhost:4000/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -31,9 +33,8 @@ export default function LoginForm() {
       const data = await res.json();
       console.log("Usuario logueado:", data);
 
-      // Aquí podrías guardar el token y redirigir
       // localStorage.setItem("token", data.token);
-      // router.push("/dashboard");
+      router.push("/dashboard");
     } catch (err: any) {
       setError(err.message);
     }
