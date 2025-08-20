@@ -87,7 +87,8 @@ export default function Navbar() {
               <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]">
                 Configuración
               </button>
-              <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]">
+              <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]"
+              onClick={handleLogout}>
                 Cerrar sesión
               </button>
             </div>
