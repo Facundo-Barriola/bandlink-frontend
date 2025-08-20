@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { User } from "lucide-react";
+import { useRouter } from "next/navigation"; 
 import PillNav from "./pillnav";
 import logo from "/public/logo-bandlink.png";
 
@@ -9,13 +10,45 @@ export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState("/discover");
   const [hovered, setHovered] = useState<string | null>(null);
+  const router = useRouter();
 
+  const menuRef = useRef<HTMLDivElement>(null);
   const items = [
     { label: "Discover", href: "/discover" },
     { label: "Request", href: "/request" },
     { label: "My Events", href: "/events" },
     { label: "Connections", href: "/connections" },
   ];
+
+     useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+    const handleLogout = async () => {
+    try {
+      const res = await fetch("http://localhost:4000/auth/logout", { 
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (res.ok) {
+        router.push("/login");
+      } else {
+        console.error("Error al cerrar sesión");
+      }
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+    }
+  };
 
   return (
     <nav className="w-full shadow-md relative z-50">
@@ -38,9 +71,9 @@ export default function Navbar() {
         />
 
         {/* Avatar + Dropdown */}
-        <div className="relative ml-6">
+        <div  ref={menuRef} className="relative ml-6">
           <button
-            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#65558F] text-white"
+            className="w-10 h-10 flex items-center justify-center rounded-full bg-[#65558F] text-white cursor-pointer hover:bg-[#EADDFF] transition-colors duration-200"
             onClick={() => setOpen(!open)}
           >
             <User size={20} />
