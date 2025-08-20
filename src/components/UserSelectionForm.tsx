@@ -10,7 +10,7 @@ import Image from "next/image";
 export default function UserSelectionForm(){
     const [role, setRole] = useState<"musico" | "sala" | "estandar" |null>(null);
     return(
-         <div className="min-h-screen flex items-center justify-center bg-gray-100">
+    <div className="flex items-center justify-center w-full">
       {!role && (
         <Card className="w-[400px] shadow-xl rounded-2xl">
           <CardHeader>

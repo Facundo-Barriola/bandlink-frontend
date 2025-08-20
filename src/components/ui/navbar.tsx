@@ -1,44 +1,44 @@
 "use client";
 
 import { useState } from "react";
-import { Search, User } from "lucide-react";
+import { User } from "lucide-react";
+import PillNav from "./pillnav";
+import logo from "/public/logo-bandlink.png";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState("/discover");
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  const items = [
+    { label: "Discover", href: "/discover" },
+    { label: "Request", href: "/request" },
+    { label: "My Events", href: "/events" },
+    { label: "Connections", href: "/connections" },
+  ];
 
   return (
-    <nav className="w-full bg-[#EADDFF] shadow-md">
-      <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-3">
-        
-        {/* Logo + Título */}
-        <div className="flex items-center gap-3">
-          <img
-            src="/logo-bandlink.png"
-            alt="BandLink Logo"
-            className="h-15 w-15"
-          />
-          <span className="text-xl font-bold text-[#65558F]">BandLink</span>
-        </div>
-
-        {/* Links */}
-        <div className="flex flex-1 justify-around items-center">
-          <button className="flex items-center gap-1 text-[#65558F] hover:underline underline-offset-4 decoration-[#65558F]">
-            <Search size={18} />
-            Discover
-          </button>
-          <button className="text-[#65558F] hover:underline underline-offset-4 decoration-[#65558F]">
-            Request
-          </button>
-          <button className="text-[#65558F] hover:underline underline-offset-4 decoration-[#65558F]">
-            My Events
-          </button>
-          <button className="text-[#65558F] hover:underline underline-offset-4 decoration-[#65558F]">
-            Connections
-          </button>
-        </div>
+    <nav className="w-full shadow-md relative z-50">
+      <div className="w-full mx-auto flex items-center  px-5 bg-[#EADDFF]">
+        {/* Menú principal */}
+        <PillNav
+          logo={logo}
+          logoAlt="BandLink Logo"
+          items={items.map((item) => ({
+            ...item,
+            onMouseEnter: () => setHovered(item.href),
+            onMouseLeave: () => setHovered(null),
+            onClick: () => setActive(item.href),
+          }))}
+          activeHref={hovered || active}
+          baseColor="#EADDFF"
+          pillColor="#65558F"
+          hoveredPillTextColor="#EADDFF"
+          pillTextColor="#49454F"
+        />
 
         {/* Avatar + Dropdown */}
-        <div className="relative">
+        <div className="relative ml-6">
           <button
             className="w-10 h-10 flex items-center justify-center rounded-full bg-[#65558F] text-white"
             onClick={() => setOpen(!open)}
