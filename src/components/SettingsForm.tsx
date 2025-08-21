@@ -2,15 +2,17 @@
 
 import { useState } from "react";
 import Navbar from "@/components/ui/navbar";
+import {useUser} from "@/app/context/userContext";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 export default function SettingsForm() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [username, setUsername] = useState("");
-
+  const { user } = useUser();
   const handleChangePassword = async () => {
     try {
-      const res = await fetch("http://localhost:4000/auth/change-password", {
+      const res = await fetch(`${API_URL}/auth/${user?.idUser}/change-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
