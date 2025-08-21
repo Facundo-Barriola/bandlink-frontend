@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { User } from "lucide-react";
 import { useRouter } from "next/navigation"; 
+import { useUser } from '../../app/context/userContext';
 import PillNav from "./pillnav";
 import logo from "/public/logo-bandlink.png";
 
@@ -12,6 +13,7 @@ export default function Navbar() {
   const [hovered, setHovered] = useState<string | null>(null);
   const router = useRouter();
 
+
   const menuRef = useRef<HTMLDivElement>(null);
   const items = [
     { label: "Discover", href: "/discover" },
@@ -19,8 +21,8 @@ export default function Navbar() {
     { label: "My Events", href: "/events" },
     { label: "Connections", href: "/connections" },
   ];
-
-     useEffect(() => {
+    const { user } = useUser();
+    useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setOpen(false);
@@ -32,7 +34,7 @@ export default function Navbar() {
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
-
+ 
     const handleLogout = async () => {
     try {
       const res = await fetch("http://localhost:4000/auth/logout", { 
@@ -79,12 +81,13 @@ export default function Navbar() {
             <User size={20} />
           </button>
 
-          {open && (
+          {open && user &&(
             <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-lg py-2 z-50">
               <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]">
                 Mi Perfil
               </button>
-              <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]">
+              <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]"
+              onClick={() => router.push(`/settings/${user.idUser}`)}>
                 Configuración
               </button>
               <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]"

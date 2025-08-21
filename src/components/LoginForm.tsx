@@ -1,107 +1,101 @@
 "use client";
-
-import { useState } from "react";
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useUser } from "@/app/context/userContext";
+import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation"; 
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 export default function LoginForm() {
+  const router = useRouter();
+  const { setUser } = useUser();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
-
-    if (!email || !password) {
-      setError("Por favor, completa todos los campos.");
-      return;
-    }
-
+    setError(null);
+    setLoading(true);
     try {
-      const res = await fetch("http://localhost:4000/auth/login", {
+      const res = await fetch(`${API_URL}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ email, password }),
       });
-
-      if (!res.ok) {
-        throw new Error("Credenciales incorrectas");
-      }
+      if (!res.ok) throw new Error("Credenciales incorrectas");
 
       const data = await res.json();
-      console.log("Usuario logueado:", data);
-
-      // localStorage.setItem("token", data.token);
-      router.push("/dashboard");
+      setUser(data.user);
+      router.push(`/dashboard/${data.user.idUser}`);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Error inesperado");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-<div className="min-h-screen flex items-center justify-center bg-gray-100">
-    <div className="max-w-sm mx-auto mt-20 p-6 bg-white rounded-2xl shadow-lg">
-        <div className="flex justify-center mb-4">
+    <div className="flex justify-center items-center min-h-screen bg-gray-100">
+      <form
+        onSubmit={onSubmit}
+        className="bg-white shadow-2xl rounded-2xl p-8 w-full max-w-md flex flex-col gap-5"
+      >
+        {/* Logo arriba */}
+        <div className="flex justify-center">
           <Image
             src="/logo-bandlink.png"
-            alt="Login Icon"
-            width={80}
-            height={80}
+            alt="BandLink logo"
+            width={120}
+            height={120}
+            priority
+            className="object-contain"
           />
-        </div>
-      <h2 className="text-[#65558F] font-bold mb-4 text-center">BandLink</h2>
-      {error && <p className="text-red-500 text-sm mb-2">{error}</p>}
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <label htmlFor="email" className="text-[#65558F] font-medium">
-            Mail
-        </label>
-        <input
-          type="email"
-          placeholder="Correo electrónico"
-          className="text-[#65558F] border p-2 rounded"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-        <label htmlFor="password" className="text-[#65558F] font-medium">
-            Contraseña
-        </label>
-        <input
-          type="password"
-          placeholder="Contraseña"
-          className="text-[#65558F] border p-2 rounded"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        
-        <div className="flex items-center gap-2">
-          <input
-            id="remember"
-            type="checkbox"
-            className="h-4 w-4 text-[#65558F] border-gray-300 rounded"
-          />
-          <label htmlFor="remember" className="text-[#65558F] font-medium">
-            Recordar contraseña
-          </label>
         </div>
 
+        <h2 className="text-3xl font-bold text-center" style={{ color: "#65558F" }}>
+          Iniciar sesión
+        </h2>
+
+        <input
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="Email"
+          type="email"
+          className="w-full border p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#65558F] border-[#65558F] placeholder-gray-400"
+          required
+        />
+
+        <input
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Contraseña"
+          type="password"
+          className="w-full border p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#65558F] border-[#65558F] placeholder-gray-400"
+          required
+        />
+
         <button
-          type="submit"
-          className="bg-[#65558F] text-white py-2 rounded hover:bg-[#564A7A] transition"
+          disabled={loading}
+          className="w-full py-3 rounded-full font-semibold transition-colors duration-200 disabled:opacity-50 text-white hover:brightness-95 active:scale-[0.99]"
+          style={{ backgroundColor: "#65558F" }}
         >
-          Login
+          {loading ? "Ingresando…" : "Entrar"}
         </button>
-      </form>
-      <div className="mt-4 text-center">
-        <p className="text-[#65558F]">
+
+        {error && <p className="text-red-600 text-sm text-center mt-2">{error}</p>}
+
+        <p className="text-center text-sm mt-2 text-gray-700">
           ¿No tienes cuenta?{" "}
-          <a href="/register" className="text-[#564A7A] hover:underline">
+          <Link href="/register" className="font-semibold underline" style={{ color: "#65558F" }}>
             Regístrate
-          </a>
+          </Link>
         </p>
-      </div>
+      </form>
     </div>
-</div>
   );
 }
