@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/app/context/userContext";
 import Link from "next/link";
@@ -13,8 +13,17 @@ export default function LoginForm() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const savedEmail = localStorage.getItem("bandlink:rememberedEmail");
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRememberMe(true);
+    }
+  }, []);
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,12 +34,19 @@ export default function LoginForm() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, rememberMe }),
       });
       if (!res.ok) throw new Error("Credenciales incorrectas");
 
       const data = await res.json();
       setUser(data.user);
+
+      if (rememberMe) {
+        localStorage.setItem("bandlink:rememberedEmail", email);
+      } else {
+        localStorage.removeItem("bandlink:rememberedEmail");
+      }
+
       router.push(`/dashboard/${data.user.idUser}`);
     } catch (err: any) {
       setError(err.message || "Error inesperado");
@@ -78,6 +94,16 @@ export default function LoginForm() {
           className="w-full border p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#65558F] border-[#65558F] placeholder-gray-400"
           required
         />
+        
+        <label className="flex items-center gap-2 text-sm text-gray-700 select-none">
+          <input
+            type="checkbox"
+            checked={rememberMe}
+            onChange={(e) => setRememberMe(e.target.checked)}
+            className="w-4 h-4 accent-[#65558F] cursor-pointer"
+          />
+          Recordar sesión
+        </label>
 
         <button
           disabled={loading}
