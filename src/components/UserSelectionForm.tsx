@@ -3,12 +3,19 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import  MusicianForm  from "@/components/MusicianForm";
+import  MusicianWizard  from "@/components/MusicianWizard";
 import Select from "react-select";
 import Image from "next/image";
 
 export default function UserSelectionForm(){
     const [role, setRole] = useState<"musico" | "sala" | "estandar" |null>(null);
+      const [openMusician, setOpenMusician] = useState(false);
+
+
+  const handleMusicianClick = () => {
+    setRole("musico");
+    setOpenMusician(true);
+  };
     return(
     <div className="flex items-center justify-center w-full">
       {!role && (
@@ -19,13 +26,13 @@ export default function UserSelectionForm(){
           <CardContent className="flex flex-col gap-4">
             <Button
               className="w-full bg-[#65558F] hover:bg-[#51447A] text-white"
-              onClick={() => setRole("musico")}
+              onClick={handleMusicianClick}
             >
               🎸 Músico
             </Button>
             <Button
               className="w-full bg-[#65558F] hover:bg-[#51447A] text-white"
-              onClick={() => setRole("sala")}
+              onClick= {() => setRole("sala")}
               variant="outline"
             >
               🏠 Sala de Ensayo
@@ -75,7 +82,11 @@ export default function UserSelectionForm(){
       )}
 
       {role === "musico" && (
-        <MusicianForm />
+        <MusicianWizard open={openMusician}
+        onOpenChange={(v) => {
+          setOpenMusician(v);
+          if (!v) setRole(null);
+        }} />
       )}
 
       {role === "sala" && (
