@@ -47,7 +47,7 @@ export default function LoginForm() {
         localStorage.removeItem("bandlink:rememberedEmail");
       }
 
-      router.push(`/dashboard/${data.user.idUser}`);
+      router.push(`/home/${data.user.idUser}`);
     } catch (err: any) {
       setError(err.message || "Error inesperado");
     } finally {

@@ -14,24 +14,24 @@ export default function UserSelectionForm(){
       {!role && (
         <Card className="w-[400px] shadow-xl rounded-2xl">
           <CardHeader>
-            <CardTitle className="text-center">Registrarse como...</CardTitle>
+            <CardTitle className="text-center text-[#65558F]">Registrarse como...</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Button
-              className="w-full"
+              className="w-full bg-[#65558F] hover:bg-[#51447A] text-white"
               onClick={() => setRole("musico")}
             >
               🎸 Músico
             </Button>
             <Button
-              className="w-full"
+              className="w-full bg-[#65558F] hover:bg-[#51447A] text-white"
               onClick={() => setRole("sala")}
               variant="outline"
             >
               🏠 Sala de Ensayo
             </Button>
             <Button 
-              className="w-full"
+              className="w-full bg-[#65558F] hover:bg-[#51447A] text-white"
               onClick={() => setRole("estandar")}
             >
               👤 Usuario Estándar
