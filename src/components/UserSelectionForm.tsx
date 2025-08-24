@@ -3,20 +3,79 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import  MusicianWizard  from "@/components/MusicianWizard";
+import MusicianWizard from "@/components/MusicianWizard";
 import Select from "react-select";
 import Image from "next/image";
 
-export default function UserSelectionForm(){
-    const [role, setRole] = useState<"musico" | "sala" | "estandar" |null>(null);
-      const [openMusician, setOpenMusician] = useState(false);
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
+type Role = "musico" | "sala" | "estandar";
+
+type WizardCompletePayload = {
+  profile: { displayName: string; bio: string | null };
+  musician: {
+    birthDate: string;
+    skillLevel: "beginner" | "intermediate" | "advanced" | "professional";
+    isAvailable: boolean;
+    travelRadiusKm: number;
+    visibility: "city" | "province" | "country" | "global";
+    instruments: { idInstrument: number; isPrimary: boolean }[];
+  };
+};
+
+export default function UserSelectionForm({
+  email,
+  password,
+  onRegistered, }: {
+    email: string;
+    password: string;
+    onRegistered?: (data: any) => void;
+  }
+) {
+  const [role, setRole] = useState<Role | null>(null);
+  const [openMusician, setOpenMusician] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
 
   const handleMusicianClick = () => {
     setRole("musico");
     setOpenMusician(true);
   };
-    return(
+
+  async function registerFullAsMusician(payload: WizardCompletePayload) {
+    try {
+      setSubmitting(true);
+      setError(null);
+
+      const res = await fetch(`${API_URL}/account/registerFull`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email,
+          password,
+          role: "musico",
+          profile: payload.profile,
+          musician: payload.musician,
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.message || "Error en el registro");
+      }
+
+      const data = await res.json();
+      onRegistered?.(data);
+      // cerrar y resetear selección
+      setOpenMusician(false);
+      setRole(null);
+    } catch (e: any) {
+      setError(e?.message || "Error en el registro");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+  return (
     <div className="flex items-center justify-center w-full">
       {!role && (
         <Card className="w-[400px] shadow-xl rounded-2xl">
@@ -32,12 +91,12 @@ export default function UserSelectionForm(){
             </Button>
             <Button
               className="w-full bg-[#65558F] hover:bg-[#51447A] text-white"
-              onClick= {() => setRole("sala")}
+              onClick={() => setRole("sala")}
               variant="outline"
             >
               🏠 Sala de Ensayo
             </Button>
-            <Button 
+            <Button
               className="w-full bg-[#65558F] hover:bg-[#51447A] text-white"
               onClick={() => setRole("estandar")}
             >
@@ -83,10 +142,11 @@ export default function UserSelectionForm(){
 
       {role === "musico" && (
         <MusicianWizard open={openMusician}
-        onOpenChange={(v) => {
-          setOpenMusician(v);
-          if (!v) setRole(null);
-        }} />
+          onOpenChange={(v) => {
+            setOpenMusician(v);
+            if (!v) setRole(null);
+          }}
+           onComplete={registerFullAsMusician} />
       )}
 
       {role === "sala" && (
@@ -127,5 +187,5 @@ export default function UserSelectionForm(){
         </Card>
       )}
     </div>
-    );
+  );
 };

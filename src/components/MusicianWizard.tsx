@@ -26,11 +26,38 @@ type City = {
   postalCode: string;
 };
 type Instrument = { idInstrument: number; instrumentName: string };
+
 type Step = 1 | 2 | 3;
 
+type SkillLevel = "beginner" | "intermediate" | "advanced" | "professional";
+type ExperienceOption = { value: SkillLevel; label: string };
+
+type Visibility = "city" | "province" | "country" | "global";
+
+type WizardCompletePayload = {
+  profile: {
+    displayName: string;
+    bio: string | null;
+  };
+  musician: {
+    birthDate: string;
+    skillLevel: "beginner" | "intermediate" | "advanced" | "professional";
+    isAvailable: boolean;
+    travelRadiusKm: number;
+    visibility: "city" | "province" | "country" | "global";
+    instruments: { idInstrument: number; isPrimary: boolean }[];
+  };
+};
+
 export default function MusicianWizard({
-  open, onOpenChange
-}: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  open,
+  onOpenChange,
+  onComplete,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void,
+  onComplete?: (payload: WizardCompletePayload) => void
+}) {
 
   const [step, setStep] = useState<Step>(1);
   const next = () =>
@@ -75,7 +102,7 @@ export default function MusicianWizard({
   const [err, setErr] = useState<string | null>(null);
   const instrumentIds = selectedInstruments.map(i => i.idInstrument);
 
-  const experienceOptions = [
+  const experienceOptions: ExperienceOption[] = [
     { value: "beginner", label: "Principiante" },
     { value: "intermediate", label: "Intermedio" },
     { value: "advanced", label: "Avanzado" },
@@ -176,28 +203,6 @@ export default function MusicianWizard({
       mounted = false;
     };
   }, [provinceId]);
-
-  /*useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        setErr(null);
-        setLoadingInstruments(true);
-        const instruments = await apiGet<Instrument[]>("/directory/instruments");
-        if (!mounted) return;
-        instruments.sort((a, b) => a.instrumentName.localeCompare(b.instrumentName, "es"));
-        setInstrumentsRaw(instruments);
-      } catch {
-        setErr("No se pudieron cargar los instrumentos");
-        setInstrumentsRaw([]);
-      } finally {
-        setLoadingInstruments(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [])*/
 
   const canNextStep1 = firstName.trim() && lastName.trim() && birthDate;
   const canNextStep2 = countryId && provinceId && cityId;
@@ -362,7 +367,21 @@ export default function MusicianWizard({
               ) : (
                 <Button
                   className="bg-[#65558F] hover:bg-[#51447A] text-white"
-                  onClick={handleSubmit}
+                  onClick={() => {
+                    const payload = {
+                      profile: { displayName: `${firstName} ${lastName}`, bio },
+                      musician: {
+                        birthDate,
+                        skillLevel: experience?.value ?? "intermediate",
+                        isAvailable: true,
+                        travelRadiusKm: 10,
+                        visibility: "city" as Visibility,
+                        instruments: selectedInstruments.map(i => ({ idInstrument: i.idInstrument, isPrimary: false }))
+                      }
+                    };
+                    onComplete?.(payload);
+                    onOpenChange(false);
+                  }}
                   disabled={!canSubmit}
                 >
                   Finalizar

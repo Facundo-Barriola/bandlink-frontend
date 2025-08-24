@@ -1,15 +1,20 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation"
+import UserSelectionForm from "@/components/UserSelectionForm";
+
 
 export default function RegisterForm() {
+  const [stage, setStage] = useState<"form" | "pick">("form");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-const handleSubmit = async (e: React.FormEvent) => {
+  const router = useRouter();
+  
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setSuccess("");
@@ -23,28 +28,33 @@ const handleSubmit = async (e: React.FormEvent) => {
       setError("Las contraseñas no coinciden");
       return;
     }
-
-    try {
-      const res = await fetch("http://localhost:4000/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, confirmPassword }),
-      });
-
-      if (!res.ok) {
-        const { message } = await res.json();
-        throw new Error(message || "Error en el registro");
-      }
-
-      setSuccess("✅ Registro exitoso. Ya puedes iniciar sesión.");
-      setEmail("");
-      setPassword("");
-      setConfirmPassword("");
-    } catch (err: any) {
-      setError(err.message);
-    }
+    setStage("pick");
   };
 
+  const handleRegistered = (resp: any) => {
+    setSuccess("✅ Registro exitoso. Ya puedes iniciar sesión.");
+    // redirección login
+    router.push(`/login`); 
+  };
+
+  if (stage === "pick") {
+    return (
+      <div className="w-full flex items-center justify-center p-6">
+        <UserSelectionForm
+          email={email}
+          password={password}
+          onRegistered={handleRegistered}
+        />
+        {/* Botón para volver a editar email/contraseña si quiere */}
+        <button
+          className="ml-4 text-sm text-[#65558F] underline"
+          onClick={() => setStage("form")}
+        >
+          ← Volver
+        </button>
+      </div>
+    );
+  }
   return (
     <form
       onSubmit={handleSubmit}
