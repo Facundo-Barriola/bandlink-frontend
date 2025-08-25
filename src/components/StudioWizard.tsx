@@ -442,7 +442,6 @@ export default function StudioWizard({
               </section>
             )}
 
-            {/* Paso 3: Amenidades */}
             {step === 3 && (
               <section className="grid gap-4">
                 <div>
@@ -529,6 +528,8 @@ export default function StudioWizard({
                             )
                           );
                         }}
+                        rows={4}
+                        className="resize-none"
                       />
                     </div>
                     <div className="sm:col-span-2 flex justify-end">
