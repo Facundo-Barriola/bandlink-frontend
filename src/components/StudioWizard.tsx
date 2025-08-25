@@ -283,7 +283,9 @@ export default function StudioWizard({
           capacity: (r.capacity ?? null) as number | null,
           hourlyPrice: Number(r.hourlyPrice),
           notes: r.notes || null,
-          equipment: r.equipment && r.equipment.length ? r.equipment : null, // ← lista de strings
+          equipment: r.equipment && r.equipment.length ? 
+            (Array.isArray(r.equipment[0]) ? r.equipment[0] : r.equipment[0].split("\n").map(s => s.trim()).filter(Boolean)) : 
+            null, // ← procesar multilínea al final
         })),
       },
     };
@@ -514,23 +516,21 @@ export default function StudioWizard({
                     </div>
                     <div className="sm:col-span-2">
                       <label className="text-[#65558F] text-sm">Equipos (uno por línea)</label>
-                      <Textarea
-                        placeholder={"Batería DW\n2 Amplificadores guitarra\nAmplificador bajo\n3x SM58"}
-                        value={(Array.isArray(r.equipment) ? r.equipment : []).join("\n")}
-                        onChange={(e) => {
-                          const items = e.target.value
-                            .split("\n")
-                            .map((s) => s.trim())
-                            .filter(Boolean); // string[]
-                          setRooms((prev) =>
-                            prev.map((room, i) =>
-                              i === idx ? { ...room, equipment: items.length ? items : [] } : room
-                            )
-                          );
-                        }}
-                        rows={4}
-                        className="resize-none"
-                      />
+                                             <Textarea
+                         placeholder={"Batería DW\n2 Amplificadores guitarra\nAmplificador bajo\n3x SM58"}
+                         value={(Array.isArray(r.equipment) ? r.equipment : []).join("\n")}
+                         onChange={(e) => {
+                           // Permitir entrada libre, solo procesar al final
+                           const rawValue = e.target.value;
+                           setRooms((prev) =>
+                             prev.map((room, i) =>
+                               i === idx ? { ...room, equipment: rawValue ? [rawValue] : [] } : room
+                             )
+                           );
+                         }}
+                         rows={4}
+                         className="resize-none"
+                       />
                     </div>
                     <div className="sm:col-span-2 flex justify-end">
                       <Button variant="ghost" onClick={() => removeRoom(idx)}>
