@@ -83,7 +83,8 @@ export default function Navbar() {
 
           {open && user &&(
             <div className="absolute right-0 mt-2 w-40 bg-white rounded-lg shadow-lg py-2 z-50">
-              <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]">
+              <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]"
+              onClick= {() => router.push(`/profile/${user.idUser}`)}>
                 Mi Perfil
               </button>
               <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]"

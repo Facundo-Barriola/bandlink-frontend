@@ -1,6 +1,6 @@
 // app/layout.tsx
 import "./globals.css";
-import { UserProvider } from "./context/userContext"; // ajusta la ruta
+import { UserProvider } from "@/app/context/userContext"; 
 
 export const metadata = {
   title: "BandLink",
