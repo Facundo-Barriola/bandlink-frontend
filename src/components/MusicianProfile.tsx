@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { AvatarEditable } from "@/components/ui/AvatarEditable";
 import { CalendarDays, Users, Crown, MapPin, Pencil } from "lucide-react";
 import { useUser } from "@/app/context/userContext";
 
@@ -50,6 +50,7 @@ type Api = {
         capacityMax: number | null;
     }>;
 };
+
 
 export default function MusicianProfile() {
     const router = useRouter();
@@ -118,8 +119,8 @@ export default function MusicianProfile() {
                 <Card className="rounded-2xl shadow">
                     <CardContent className="py-10 text-center">
                         <p className="text-lg">No encontramos el perfil.</p>
-                        <Button className="mt-4" onClick={() => router.push("/discover")}>
-                            Volver al Discover
+                        <Button className="mt-4" onClick={() => router.push(`/home/${data?.userData?.idUser}`)}>
+                            Volver al home
                         </Button>
                     </CardContent>
                 </Card>
@@ -134,18 +135,23 @@ export default function MusicianProfile() {
             {/* Header */}
             <Card className="rounded-2xl">
                 <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
-                    <Avatar className="h-24 w-24 rounded-2xl">
-                        <AvatarImage src={userData.avatarUrl ?? ""} alt={userData.displayName} />
-                        <AvatarFallback className="rounded-2xl text-xl">
-                            {userData.displayName.slice(0, 2).toUpperCase()}
-                        </AvatarFallback>
-                    </Avatar>
+                    <AvatarEditable
+                        idUser={userData.idUser}
+                        displayName={userData.displayName}
+                        src={userData.avatarUrl}
+                        editable={user?.idUser === userData.idUser}   // solo editable si es tu propio perfil
+                        onUploaded={(url) =>
+                            setData(prev => prev
+                                ? { ...prev, userData: { ...prev.userData!, avatarUrl: url } }
+                                : prev)
+                        }
+                    />
 
                     <div className="flex-1">
                         <div className="flex items-center gap-3">
-                            <h1 className="text-2xl font-semibold">{userData.displayName}</h1>
+                            <h1 className=" text-[#65558F] text-2xl font-semibold">{userData.displayName}</h1>
                             {musician?.isAvailable && (
-                                <Badge className="rounded-full">Disponible</Badge>
+                                <Badge className="bg-[#65558F] text-white rounded-full">Disponible</Badge>
                             )}
                         </div>
                         {userData.bio && <p className="text-muted-foreground mt-1">{userData.bio}</p>}
@@ -166,7 +172,7 @@ export default function MusicianProfile() {
                     </div>
 
                     <div className="flex gap-2">
-                        <Button variant="secondary" onClick={() => router.push(`/profile/${userData.idUser}/edit`)}>
+                        <Button className="bg-[#65558F] text-white" variant="secondary" onClick={() => router.push(`/profile/${userData.idUser}/edit`)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Editar Perfil
                         </Button>
@@ -178,13 +184,13 @@ export default function MusicianProfile() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Card className="rounded-2xl">
                     <CardHeader>
-                        <CardTitle>Instrumentos</CardTitle>
+                        <CardTitle className="text-[#65558F]">Instrumentos</CardTitle>
                     </CardHeader>
                     <CardContent className="flex flex-wrap gap-2">
                         {musician?.instruments?.length ? (
                             musician.instruments.map((i) => (
                                 <Badge key={`inst-${i.idInstrument}`} variant={i.isPrimary ? "default" : "secondary"}
-                                    className="text-sm px-3 py-1 rounded-full leading-5">
+                                    className="bg-[#65558F] text-white text-sm px-3 py-1 rounded-full leading-5">
                                     {i.instrumentName}{i.isPrimary ? " · Principal" : ""}
                                 </Badge>
                             ))
@@ -196,7 +202,7 @@ export default function MusicianProfile() {
 
                 <Card className="rounded-2xl">
                     <CardHeader>
-                        <CardTitle>Géneros</CardTitle>
+                        <CardTitle className="text-[#65558F]">Géneros</CardTitle>
                     </CardHeader>
                     <CardContent className="flex flex-wrap gap-2">
                         {musician?.genres?.length ? (
@@ -214,7 +220,7 @@ export default function MusicianProfile() {
 
             {/* My Bands */}
             <section>
-                <h2 className="text-lg font-semibold mb-3">Mis Bandas</h2>
+                <h2 className="text-[#65558F] text-lg font-semibold mb-3">Mis Bandas</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {bands.length ? (
                         bands.map((b) => (
@@ -279,7 +285,7 @@ export default function MusicianProfile() {
 
             {/* My Events */}
             <section>
-                <h2 className="text-lg font-semibold mb-3">Mis Eventos</h2>
+                <h2 className="text-[#65558F] text-lg font-semibold mb-3">Mis Eventos</h2>
                 <div className="space-y-4">
                     {eventsCreated.length ? (
                         eventsCreated.map((e) => (
