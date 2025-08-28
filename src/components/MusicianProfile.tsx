@@ -37,6 +37,8 @@ type Api = {
         description: string | null;
         roleInBand: string | null;
         isAdmin: boolean;
+        joinedAt: Date|null;
+        leftAt: Date|null;
         membersCount: number;
         genres: string[];
     }>;
@@ -89,7 +91,8 @@ export default function MusicianProfile() {
                     ...payload,
                     userData: payload.user ?? payload.userData ?? null,
                 });
-            } catch (e) {
+            } catch (e: any) {
+                if (e?.name === "AbortError" || e?.message?.includes("aborted")) return;
                 console.error(e);
             } finally {
                 if (active) setLoading(false);

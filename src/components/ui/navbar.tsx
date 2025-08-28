@@ -63,7 +63,7 @@ export default function Navbar() {
             ...item,
             onMouseEnter: () => setHovered(item.href),
             onMouseLeave: () => setHovered(null),
-            onClick: () => setActive(item.href),
+            onClick: () => {setActive(item.href), router.push(item.href)},
           }))}
           activeHref={hovered || active}
           baseColor="#EADDFF"

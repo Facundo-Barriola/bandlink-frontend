@@ -55,7 +55,7 @@ const PillNav: FC<PillNavProps> = ({
               onClick={item.onClick}
               onMouseEnter={item.onMouseEnter}
               onMouseLeave={item.onMouseLeave}
-              className="px-4 py-2 rounded-full transition-colors duration-200 font-medium"
+              className="px-4 py-2 rounded-full transition-colors duration-200 font-medium cursor-pointer"
               style={{
                 backgroundColor: isActive ? pillColor : "transparent",
                 color: isActive ? hoveredPillTextColor : pillTextColor,

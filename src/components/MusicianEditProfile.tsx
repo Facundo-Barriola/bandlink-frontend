@@ -114,7 +114,6 @@ export default function MusicianProfileEdit() {
         const id = candidate && candidate !== "undefined" && candidate !== "null" ? candidate : null;
 
         if (!id) {
-            // no dispares el fetch si no hay id
             setLoading(false);
             console.warn("No idUser (ruta ni contexto). ¿Estás logueado o en /profile/[idUser]/edit?");
             return;
