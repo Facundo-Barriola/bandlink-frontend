@@ -17,20 +17,22 @@ type Province = { idProvince: number; idCountry: number; provinceCode: string; p
 type City = { idCity: number; idProvince: number; cityDesc: string; postalCode: string };
 
 type Amenity = { idAmenity: number; amenityName: string };
-
+type DayKey = "mon" | "tue" | "wed" | "thu" | "fri" | "sat" | "sun";
+type OpeningHours = Record<DayKey, Array<[string, string]>>;
 type RoomInput = {
   roomName: string;
   capacity?: number | null;
   hourlyPrice: number;
   notes?: string | null;
-  equipment?: string[]; // ← lo manejamos como array de strings
+  equipment?: string[];
+  equipmentText?: string;
 };
 
 type WizardCompletePayload = {
   profile: {
     displayName: string;
     bio: string | null;
-    idAddress: number | null; // si creás Address antes, poné el id aquí
+    idAddress: number | null;
     latitude: number | null;
     longitude: number | null;
   };
@@ -39,10 +41,15 @@ type WizardCompletePayload = {
     phone?: string | null;
     website?: string | null;
     cancellationPolicy?: string | null;
-    // openingHours?: any; // si querés agregarlo después
-    amenities: { idAmenity: number }[];  // ← shape correcto
+    openingHours?: any;
+    amenities: { idAmenity: number }[];
     rooms: RoomInput[];
   };
+};
+
+const DAY_LABELS: Record<DayKey, string> = {
+  mon: "Lunes", tue: "Martes", wed: "Miércoles",
+  thu: "Jueves", fri: "Viernes", sat: "Sábado", sun: "Domingo",
 };
 
 export default function StudioWizard({
@@ -89,7 +96,7 @@ export default function StudioWizard({
 
   // Rooms
   const [rooms, setRooms] = useState<RoomInput[]>([
-    { roomName: "Sala A", hourlyPrice: 0, capacity: 4, notes: "", equipment: [] },
+    { roomName: "Sala A", hourlyPrice: 0, capacity: 4, notes: "", equipment: [], equipmentText: "" },
   ]);
 
   // Loads
@@ -100,6 +107,34 @@ export default function StudioWizard({
 
   const [err, setErr] = useState<string | null>(null);
 
+  const [openingHours, setOpeningHours] = useState<OpeningHours>({
+    mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [],
+  });
+
+  function addRange(day: DayKey) {
+    setOpeningHours((oh) => ({ ...oh, [day]: [...oh[day], ["09:00", "18:00"]] }));
+  }
+  function updateRange(day: DayKey, idx: number, which: 0 | 1, value: string) {
+    setOpeningHours((oh) => {
+      const copy = oh[day].map((r, i) => i === idx ? ([which === 0 ? value : r[0], which === 1 ? value : r[1]]) as [string, string] : r);
+      return { ...oh, [day]: copy };
+    });
+  }
+  function removeRange(day: DayKey, idx: number) {
+    setOpeningHours((oh) => {
+      const copy = oh[day].filter((_, i) => i !== idx);
+      return { ...oh, [day]: copy };
+    });
+  }
+  function copyDayToAll(from: DayKey) {
+    setOpeningHours((oh) => {
+      const src = oh[from];
+      return { mon: [...src], tue: [...src], wed: [...src], thu: [...src], fri: [...src], sat: [...src], sun: [...src] };
+    });
+  }
+  function clearAll() {
+    setOpeningHours({ mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] });
+  }
   async function apiGet<T>(path: string): Promise<T> {
     const res = await fetch(`${API_URL}${path}`, { cache: "no-store" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -260,7 +295,7 @@ export default function StudioWizard({
 
   // Helpers rooms
   const addRoom = () =>
-    setRooms((r) => [...r, { roomName: "", hourlyPrice: 0, capacity: null, notes: "", equipment: [] }]);
+    setRooms((r) => [...r, { roomName: "", hourlyPrice: 0, capacity: null, notes: "", equipment: [], equipmentText: "" }]);
   const removeRoom = (idx: number) => setRooms((r) => r.filter((_, i) => i !== idx));
 
   function normalizeEquipment(raw: string): string[] {
@@ -274,19 +309,25 @@ export default function StudioWizard({
     const amenities = selectedAmenities.map((a) => ({ idAmenity: a.idAmenity }));
 
     // Convertir los textareas a arrays antes de enviar
-    const normalizedRooms: RoomInput[] = rooms.map((r) => ({
-      roomName: r.roomName,
-      capacity: r.capacity ?? null,
-      hourlyPrice: Number(r.hourlyPrice),
-      notes: r.notes || null,
-      equipment: Array.isArray(r.equipment) ? r.equipment : [],
-    }));
+    const normalizedRooms: RoomInput[] = rooms.map((r) => {
+      const equipment = (r.equipmentText ?? "")
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return {
+        roomName: r.roomName,
+        capacity: r.capacity ?? null,
+        hourlyPrice: Number(r.hourlyPrice),
+        notes: r.notes || null,
+        equipment, // ← listo para el backend
+      };
+    });
 
     const payload: WizardCompletePayload = {
       profile: {
         displayName,
         bio: bio || null,
-        idAddress: null, // si tenés un POST /address, crealo y reemplaza aquí el id
+        idAddress: null,
         latitude,
         longitude,
       },
@@ -295,6 +336,7 @@ export default function StudioWizard({
         phone: phone || null,
         website: website || null,
         cancellationPolicy: cancellationPolicy || null,
+        openingHours,
         amenities,
         rooms: normalizedRooms,
       },
@@ -313,7 +355,7 @@ export default function StudioWizard({
       }}
     >
       <DialogContent
-        className="sm:max-w-[620px] rounded-2xl"
+        className="sm:max-w-[620px] max-h-[90vh] overflow-y-auto rounded-2xl"
         onInteractOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
@@ -357,6 +399,61 @@ export default function StudioWizard({
                     <label className="text-[#65558F] text-sm">Política de cancelación (opcional)</label>
                     <Input value={cancellationPolicy} onChange={(e) => setCancellationPolicy(e.target.value)} />
                   </div>
+                </div>
+                {/* Opening Hours */}
+                <div className="rounded-xl border p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-[#65558F] text-sm font-medium">Horarios de apertura</label>
+                    <div className="flex gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => copyDayToAll("mon")}>
+                        Copiar Lunes a todos
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={clearAll}>
+                        Limpiar
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 max-h-64 overflow-y-auto pr-2">
+                    {(Object.keys(DAY_LABELS) as DayKey[]).map((day) => (
+                      <div key={day} className="grid gap-2">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm text-[#65558F]">{DAY_LABELS[day]}</div>
+                          <Button type="button" size="sm" variant="secondary" onClick={() => addRange(day)}>
+                            Agregar rango
+                          </Button>
+                        </div>
+
+                        {openingHours[day].length === 0 ? (
+                          <div className="text-xs text-muted-foreground">Sin rangos</div>
+                        ) : (
+                          <div className="grid gap-2">
+                            {openingHours[day].map((rng, idx) => (
+                              <div key={idx} className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                                <Input
+                                  type="time"
+                                  value={rng[0]}
+                                  onChange={(e) => updateRange(day, idx, 0, e.target.value)}
+                                />
+                                <Input
+                                  type="time"
+                                  value={rng[1]}
+                                  onChange={(e) => updateRange(day, idx, 1, e.target.value)}
+                                />
+                                <Button type="button" variant="ghost" onClick={() => removeRange(day, idx)}>
+                                  Quitar
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Puedes definir múltiples rangos por día (ej. 10:00–13:00 y 16:00–20:00).
+                  </p>
                 </div>
                 <div>
                   <label className="text-[#65558F] text-sm">Descripción</label>
@@ -522,16 +619,19 @@ export default function StudioWizard({
                       <label className="text-[#65558F] text-sm">Equipos (uno por línea)</label>
                       <Textarea
                         placeholder={"Batería DW\n2 Amplificadores guitarra\nAmplificador bajo\n3x SM58"}
-                        value={(Array.isArray(r.equipment) ? r.equipment : []).join("\n")}
+                        value={r.equipmentText ?? (Array.isArray(r.equipment) ? r.equipment.join("\n") : "")}
                         onChange={(e) => {
-                          const lines = e.target.value;
-                          const asArray = lines ? lines.split("\n").map((s) => s.trim()).filter(Boolean) : [];
-                          setRooms((prev) =>
-                            prev.map((room, i) => (i === idx ? { ...room, equipment: asArray } : room))
-                          );
+                          const text = e.target.value;
+                          setRooms((prev) => prev.map((room, i) => (i === idx ? { ...room, equipmentText: text } : room)));
                         }}
-                        rows={4}
-                        className="resize-none"
+                        rows={8}
+                        className="min-h-32 max-h-64 resize-y"
+                        onKeyDown={(e) => e.stopPropagation()}
+                        onInput={(e) => {
+                          const ta = e.currentTarget;
+                          ta.style.height = "auto";
+                          ta.style.height = ta.scrollHeight + "px";
+                        }}
                       />
                     </div>
                     <div className="sm:col-span-2 flex justify-end">
