@@ -23,14 +23,14 @@ type RoomInput = {
   capacity?: number | null;
   hourlyPrice: number;
   notes?: string | null;
-  equipment?: string[] | null;
+  equipment?: string[]; // ← lo manejamos como array de strings
 };
 
 type WizardCompletePayload = {
   profile: {
     displayName: string;
     bio: string | null;
-    idAddress: number | null;
+    idAddress: number | null; // si creás Address antes, poné el id aquí
     latitude: number | null;
     longitude: number | null;
   };
@@ -39,7 +39,8 @@ type WizardCompletePayload = {
     phone?: string | null;
     website?: string | null;
     cancellationPolicy?: string | null;
-    amenities: number[];
+    // openingHours?: any; // si querés agregarlo después
+    amenities: { idAmenity: number }[];  // ← shape correcto
     rooms: RoomInput[];
   };
 };
@@ -54,12 +55,10 @@ export default function StudioWizard({
   onComplete?: (payload: WizardCompletePayload) => void;
 }) {
   const [step, setStep] = useState<Step>(1);
-  const next = () =>
-    setStep((s): Step => (s === 1 ? 2 : s === 2 ? 3 : 4));
-  const back = () =>
-    setStep((s): Step => (s === 4 ? 3 : s === 3 ? 2 : 1));
+  const next = () => setStep((s): Step => (s === 1 ? 2 : s === 2 ? 3 : 4));
+  const back = () => setStep((s): Step => (s === 4 ? 3 : s === 3 ? 2 : 1));
 
-  // Datos del estudio
+  // Estudio
   const [displayName, setDisplayName] = useState("");
   const [bio, setBio] = useState("");
 
@@ -68,7 +67,7 @@ export default function StudioWizard({
   const [website, setWebsite] = useState("");
   const [cancellationPolicy, setCancellationPolicy] = useState("");
 
-  // Dirección (Address)
+  // Dirección
   const [countries, setCountries] = useState<Country[]>([]);
   const [provinces, setProvinces] = useState<Province[]>([]);
   const [cities, setCities] = useState<City[]>([]);
@@ -79,7 +78,7 @@ export default function StudioWizard({
   const [streetNum, setStreetNum] = useState<number | "">("");
   const [addressDesc, setAddressDesc] = useState("");
 
-  // Geolocalización automática
+  // Geo
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
   const [geoError, setGeoError] = useState<string | null>(null);
@@ -112,7 +111,7 @@ export default function StudioWizard({
     if (!open) return;
     let mounted = true;
 
-    // Geolocalización
+    // Geo
     if (!navigator.geolocation) {
       setGeoError("Tu navegador no soporta geolocalización.");
     } else {
@@ -125,8 +124,8 @@ export default function StudioWizard({
         },
         (err) => {
           if (!mounted) return;
-          setGeoError("No se pudo obtener la ubicación automáticamente.");
           console.error("Geolocation error:", err);
+          setGeoError("No se pudo obtener la ubicación automáticamente.");
         },
         { enableHighAccuracy: true }
       );
@@ -158,8 +157,6 @@ export default function StudioWizard({
         if (!mounted) return;
         data.sort((a, b) => a.amenityName.localeCompare(b.amenityName, "es"));
         setAmenitiesRaw(data);
-      } catch {
-        /* opcional: setErr */
       } finally {
         setLoadingAmenities(false);
       }
@@ -232,10 +229,16 @@ export default function StudioWizard({
     };
   }, [provinceId]);
 
-  // Validaciones por paso
+  // Validaciones
   const canNextStep1 = displayName.trim().length > 0;
-  const canNextStep2 = countryId && provinceId && cityId && street.trim().length > 0 && typeof streetNum === "number";
-  const canNextStep3 = true; // amenities opcional
+  const canNextStep2 =
+    countryId &&
+    provinceId &&
+    cityId &&
+    street.trim().length > 0 &&
+    typeof streetNum === "number" &&
+    !Number.isNaN(streetNum as number);
+  const canNextStep3 = true;
 
   const canSubmit =
     rooms.length > 0 &&
@@ -260,15 +263,30 @@ export default function StudioWizard({
     setRooms((r) => [...r, { roomName: "", hourlyPrice: 0, capacity: null, notes: "", equipment: [] }]);
   const removeRoom = (idx: number) => setRooms((r) => r.filter((_, i) => i !== idx));
 
-  // Submit → arma payload para registerFull (role: "sala")
+  function normalizeEquipment(raw: string): string[] {
+    return raw
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
   function handleFinish() {
-    const amenityIds = selectedAmenities.map((a) => a.idAmenity);
+    const amenities = selectedAmenities.map((a) => ({ idAmenity: a.idAmenity }));
+
+    // Convertir los textareas a arrays antes de enviar
+    const normalizedRooms: RoomInput[] = rooms.map((r) => ({
+      roomName: r.roomName,
+      capacity: r.capacity ?? null,
+      hourlyPrice: Number(r.hourlyPrice),
+      notes: r.notes || null,
+      equipment: Array.isArray(r.equipment) ? r.equipment : [],
+    }));
 
     const payload: WizardCompletePayload = {
       profile: {
         displayName,
         bio: bio || null,
-        idAddress: null, // si luego creás Address, completás aquí el id
+        idAddress: null, // si tenés un POST /address, crealo y reemplaza aquí el id
         latitude,
         longitude,
       },
@@ -277,16 +295,8 @@ export default function StudioWizard({
         phone: phone || null,
         website: website || null,
         cancellationPolicy: cancellationPolicy || null,
-        amenities: amenityIds,
-        rooms: rooms.map((r) => ({
-          roomName: r.roomName,
-          capacity: (r.capacity ?? null) as number | null,
-          hourlyPrice: Number(r.hourlyPrice),
-          notes: r.notes || null,
-          equipment: r.equipment && r.equipment.length ? 
-            (Array.isArray(r.equipment[0]) ? r.equipment[0] : r.equipment[0].split("\n").map(s => s.trim()).filter(Boolean)) : 
-            null, // ← procesar multilínea al final
-        })),
+        amenities,
+        rooms: normalizedRooms,
       },
     };
 
@@ -321,7 +331,7 @@ export default function StudioWizard({
           <CardContent className="p-0 grid gap-4">
             {err && <div className="text-red-600 text-sm">{err}</div>}
 
-            {/* Paso 1: Datos del Estudio */}
+            {/* Paso 1: Datos del estudio */}
             {step === 1 && (
               <section className="grid grid-cols-1 gap-4">
                 <div>
@@ -355,7 +365,7 @@ export default function StudioWizard({
               </section>
             )}
 
-            {/* Paso 2: Dirección (sin inputs de lat/long) */}
+            {/* Paso 2: Dirección + geolocalización */}
             {step === 2 && (
               <section className="grid grid-cols-1 gap-4">
                 <div className="grid sm:grid-cols-3 gap-3">
@@ -418,7 +428,7 @@ export default function StudioWizard({
                     <label className="text-[#65558F] text-sm">Altura</label>
                     <Input
                       type="number"
-                      value={streetNum}
+                      value={typeof streetNum === "number" ? streetNum : ""}
                       onChange={(e) => setStreetNum(e.target.value ? Number(e.target.value) : "")}
                     />
                   </div>
@@ -429,21 +439,17 @@ export default function StudioWizard({
                   <Textarea value={addressDesc} onChange={(e) => setAddressDesc(e.target.value)} />
                 </div>
 
-                {/* Solo INFO de ubicación, no editable */}
                 <div className="text-xs text-muted-foreground">
                   {geoError
                     ? <span className="text-red-600">{geoError}</span>
-                    : latitude && longitude
+                    : latitude != null && longitude != null
                       ? <>Ubicación detectada: <strong>{latitude.toFixed(6)}, {longitude.toFixed(6)}</strong></>
                       : "Obteniendo ubicación..."}
                 </div>
-
-                <p className="text-xs text-muted-foreground">
-                  * Si necesitás persistir la dirección ahora, podés crear el Address vía API y usar el id en el registro.
-                </p>
               </section>
             )}
 
+            {/* Paso 3: Amenities */}
             {step === 3 && (
               <section className="grid gap-4">
                 <div>
@@ -453,9 +459,7 @@ export default function StudioWizard({
                     isLoading={loadingAmenities}
                     options={amenitiesRaw}
                     value={selectedAmenities}
-                    onChange={(vals: OnChangeValue<Amenity, true>) =>
-                      setSelectedAmenities(vals as Amenity[])
-                    }
+                    onChange={(vals: OnChangeValue<Amenity, true>) => setSelectedAmenities(vals as Amenity[])}
                     getOptionLabel={(a) => a.amenityName}
                     getOptionValue={(a) => String(a.idAmenity)}
                     placeholder="Selecciona amenidades"
@@ -465,7 +469,7 @@ export default function StudioWizard({
               </section>
             )}
 
-            {/* Paso 4: Salas (equipo sin JSON) */}
+            {/* Paso 4: Salas */}
             {step === 4 && (
               <section className="grid gap-4">
                 {rooms.map((r, idx) => (
@@ -516,21 +520,19 @@ export default function StudioWizard({
                     </div>
                     <div className="sm:col-span-2">
                       <label className="text-[#65558F] text-sm">Equipos (uno por línea)</label>
-                                             <Textarea
-                         placeholder={"Batería DW\n2 Amplificadores guitarra\nAmplificador bajo\n3x SM58"}
-                         value={(Array.isArray(r.equipment) ? r.equipment : []).join("\n")}
-                         onChange={(e) => {
-                           // Permitir entrada libre, solo procesar al final
-                           const rawValue = e.target.value;
-                           setRooms((prev) =>
-                             prev.map((room, i) =>
-                               i === idx ? { ...room, equipment: rawValue ? [rawValue] : [] } : room
-                             )
-                           );
-                         }}
-                         rows={4}
-                         className="resize-none"
-                       />
+                      <Textarea
+                        placeholder={"Batería DW\n2 Amplificadores guitarra\nAmplificador bajo\n3x SM58"}
+                        value={(Array.isArray(r.equipment) ? r.equipment : []).join("\n")}
+                        onChange={(e) => {
+                          const lines = e.target.value;
+                          const asArray = lines ? lines.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+                          setRooms((prev) =>
+                            prev.map((room, i) => (i === idx ? { ...room, equipment: asArray } : room))
+                          );
+                        }}
+                        rows={4}
+                        className="resize-none"
+                      />
                     </div>
                     <div className="sm:col-span-2 flex justify-end">
                       <Button variant="ghost" onClick={() => removeRoom(idx)}>
@@ -545,7 +547,7 @@ export default function StudioWizard({
               </section>
             )}
 
-            {/* Footer botones */}
+            {/* Footer */}
             <div className="mt-2 flex items-center justify-between">
               <Button variant="ghost" onClick={() => (step === 1 ? onOpenChange(false) : back())}>
                 {step === 1 ? "Cancelar" : "Atrás"}

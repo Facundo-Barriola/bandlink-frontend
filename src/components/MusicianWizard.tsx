@@ -8,25 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-type Country = {
-  idCountry: number;
-  countryCode: string;
-  countryDesc: string;
-};
-type Province = {
-  idProvince: number;
-  idCountry: number;
-  provinceCode: string;
-  provinceDesc: string;
-};
-type City = {
-  idCity: number;
-  idProvince: number;
-  cityDesc: string;
-  postalCode: string;
-};
 type Instrument = { idInstrument: number; instrumentName: string };
-
+type Genre = { idGenre: number; genreName: string }
 type Step = 1 | 2 | 3;
 
 type SkillLevel = "beginner" | "intermediate" | "advanced" | "professional";
@@ -38,14 +21,19 @@ type WizardCompletePayload = {
   profile: {
     displayName: string;
     bio: string | null;
+    idAddress: number | null; // no lo pedimos en el wizard
+    latitude: number | null;
+    longitude: number | null;
   };
   musician: {
     birthDate: string;
-    skillLevel: "beginner" | "intermediate" | "advanced" | "professional";
+    experienceYears: number | null
+    skillLevel: SkillLevel;
     isAvailable: boolean;
     travelRadiusKm: number;
-    visibility: "city" | "province" | "country" | "global";
+    visibility: Visibility;
     instruments: { idInstrument: number; isPrimary: boolean }[];
+    genres: { idGenre: number }[];
   };
 };
 
@@ -78,37 +66,42 @@ export default function MusicianWizard({
       }
     });
 
+  //Perfil básico
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [birthDate, setBirthDate] = useState<string>(""); // yyyy-mm-dd
   const [bio, setBio] = useState("");
   const [role, setRole] = useState<"musico" | "sala" | null>(null);
 
-  const [countries, setCountries] = useState<Country[]>([]);
-  const [provinces, setProvinces] = useState<Province[]>([]);
-  const [cities, setCities] = useState<City[]>([]);
+  // ——— Geolocalización
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
+
+  // ——— Instrumentos & Géneros
   const [instrumentsRaw, setInstrumentsRaw] = useState<Instrument[]>([]);
   const [selectedInstruments, setSelectedInstruments] = useState<Instrument[]>([]);
+  const [primaryInstrumentId, setPrimaryInstrumentId] = useState<number | null>(null);
+  const [genresRaw, setGenresRaw] = useState<Genre[]>([]);
+  const [selectedGenres, setSelectedGenres] = useState<Genre[]>([]);
 
-  const [countryId, setCountryId] = useState<number | "">("");
-  const [provinceId, setProvinceId] = useState<number | "">("");
-  const [cityId, setCityId] = useState<number | "">("");
+  // ——— Config músico
+  const [experienceYears, setExperienceYears] = useState<number | "">("");
+  const [skillLevel, setSkillLevel] = useState<SkillLevel>("intermediate");
+  const [isAvailable, setIsAvailable] = useState<boolean>(true);
+  const [travelRadiusKm, setTravelRadiusKm] = useState<number | "">("");
+  const [visibility, setVisibility] = useState<Visibility>("city");
 
-  const [loadingCountries, setLoadingCountries] = useState(false);
-  const [loadingProvinces, setLoadingProvinces] = useState(false);
-  const [loadingCities, setLoadingCities] = useState(false);
   const [loadingInstruments, setLoadingInstruments] = useState(false);
-
+  const [loadingGenres, setLoadingGenres] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const instrumentIds = selectedInstruments.map(i => i.idInstrument);
 
-  const experienceOptions: ExperienceOption[] = [
-    { value: "beginner", label: "Principiante" },
-    { value: "intermediate", label: "Intermedio" },
-    { value: "advanced", label: "Avanzado" },
-    { value: "professional", label: "Profesional" },
-  ];
-  const [experience, setExperience] = useState<typeof experienceOptions[number] | null>(null);
+  const displayName = useMemo(
+    () => [firstName.trim(), lastName.trim()].filter(Boolean).join(" "),
+    [firstName, lastName]
+  );
+
+  const instrumentIds = selectedInstruments.map(i => i.idInstrument);
 
   async function apiGet<T>(path: string): Promise<T> {
     const res = await fetch(`${API_URL}${path}`, { cache: "no-store" });
@@ -119,209 +112,140 @@ export default function MusicianWizard({
   useEffect(() => {
     if (!open) return;
     let mounted = true;
-    (async () => {
-      try {
-        setErr(null);
-        setLoadingCountries(true);
-        const data = await apiGet<Country[]>("/address/countries");
-        if (!mounted) return;
-        data.sort((a, b) => a.countryDesc.localeCompare(b.countryDesc, "es"));
-        setCountries(data);
-        const ar = data.find(c => c.countryCode?.toUpperCase() === "ARG");
-        if (ar) setCountryId(ar.idCountry);
-      } catch { setErr("No se pudieron cargar los países"); }
-      finally { setLoadingCountries(false); }
-    })();
+    if (!navigator.geolocation) {
+      setGeoError("Tu navegador no soporta geolocalización.");
+    } else {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (!mounted) return;
+          setLatitude(pos.coords.latitude);
+          setLongitude(pos.coords.longitude);
+          setGeoError(null);
+        },
+        (e) => {
+          if (!mounted) return;
+          console.error(e);
+          setGeoError("No se pudo obtener la ubicación automáticamente.");
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+    // Instrumentos
     (async () => {
       try {
         setLoadingInstruments(true);
         const data = await apiGet<Instrument[]>("/directory/instruments");
+        if (!mounted) return;
         data.sort((a, b) => a.instrumentName.localeCompare(b.instrumentName, "es"));
         setInstrumentsRaw(data);
-      } catch { /* opcional: setErr */ }
-      finally { setLoadingInstruments(false); }
+      } finally {
+        setLoadingInstruments(false);
+      }
     })();
-    return () => { mounted = false; };
+
+    // Géneros
+    (async () => {
+      try {
+        setLoadingGenres(true);
+        const data = await apiGet<Genre[]>("/directory/genres");
+        if (!mounted) return;
+        data.sort((a, b) => a.genreName.localeCompare(b.genreName, "es"));
+        setGenresRaw(data);
+      } finally {
+        setLoadingGenres(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
   }, [open]);
 
   useEffect(() => {
-    if (!countryId) {
-      setProvinces([]);
-      setProvinceId("");
-      setCities([]);
-      setCityId("");
-      return;
-    }
-    let mounted = true;
-    (async () => {
-      try {
-        setErr(null);
-        setLoadingProvinces(true);
-        setProvinceId("");
-        setCities([]);
-        setCityId("");
-        const data = await apiGet<Province[]>(`/address/${countryId}/provinces`);
-        if (!mounted) return;
-        data.sort((a, b) => a.provinceDesc.localeCompare(b.provinceDesc, "es"));
-        setProvinces(data);
-      } catch {
-        setErr("No se pudieron cargar las provincias");
-        setProvinces([]);
-      } finally {
-        setLoadingProvinces(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [countryId]);
+    if (primaryInstrumentId == null) return;
+    const stillSelected = selectedInstruments.some((i) => i.idInstrument === primaryInstrumentId);
+    if (!stillSelected) setPrimaryInstrumentId(null);
+  }, [selectedInstruments, primaryInstrumentId]);
 
-  useEffect(() => {
-    if (!provinceId) {
-      setCities([]);
-      setCityId("");
-      return;
-    }
-    let mounted = true;
-    (async () => {
-      try {
-        setErr(null);
-        setLoadingCities(true);
-        setCityId("");
-        const data = await apiGet<City[]>(`/address/${provinceId}/cities`);
-        if (!mounted) return;
-        data.sort((a, b) => a.cityDesc.localeCompare(b.cityDesc, "es"));
-        setCities(data);
-      } catch {
-        setErr("No se pudieron cargar las ciudades");
-        setCities([]);
-      } finally {
-        setLoadingCities(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [provinceId]);
+  // —— Validaciones por paso
+  const canNextStep1 = displayName.trim().length > 0 && !!birthDate;
+  const needPrimary = selectedInstruments.length > 0 && primaryInstrumentId == null;
+  const canNextStep2 = selectedInstruments.length > 0 && selectedGenres.length > 0 && !needPrimary;
 
-  const canNextStep1 = firstName.trim() && lastName.trim() && birthDate;
-  const canNextStep2 = countryId && provinceId && cityId;
-  const canSubmit = selectedInstruments.length > 0 && !!experience;
-  const countryPH = useMemo(
-    () => (loadingCountries ? "Cargando países..." : "Selecciona país"),
-    [loadingCountries]
-  );
-  const provincePH = useMemo(() => {
-    if (!countryId) return "Selecciona un país primero";
-    return loadingProvinces ? "Cargando provincias..." : "Selecciona provincia";
-  }, [countryId, loadingProvinces]
-  );
-  const cityPH = useMemo(() => {
-    if (!provinceId) return "Selecciona una provincia primero";
-    return loadingCities ? "Cargando ciudades..." : "Selecciona ciudad";
-  }, [provinceId, loadingCities]
-  );
-
-  function handleSubmit() {
-    // acá armar payload simple; luego lo envías a tu endpoint de creación
-    const payload = {
-      userProfile: {
-        displayName: `${firstName} ${lastName}`,
-        bio,
-        idAddress: null, // si lo usas
-        cityId,
-      },
-      musician: {
-        birthDate,
-        skillLevel: experience?.value ?? "intermediate",
-        isAvailable: true,
-        travelRadiusKm: 10,
-        visibility: "city",
-        instruments: selectedInstruments.map(i => i.idInstrument),
-      }
-    };
-    console.log("SUBMIT", payload);
-    onOpenChange(false);
-  }
+  const canSubmit = !!skillLevel && !needPrimary;
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setStep(1); } }}>
-      {/* Dialog pone overlay y deshabilita el fondo automáticamente */}
-      <DialogContent className="sm:max-w-[520px] rounded-2xl"
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) setStep(1);
+      }}
+    >
+      <DialogContent
+        className="sm:max-w-[560px] rounded-2xl"
         onInteractOutside={(e) => e.preventDefault()}
-        onEscapeKeyDown={(e) => e.preventDefault()} >
+        onEscapeKeyDown={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="text-[#65558F]">Registro Músico</DialogTitle>
           <DialogDescription>3 pasos rápidos</DialogDescription>
         </DialogHeader>
 
-        {/* Pequeño indicador de paso */}
         <div className="mb-2 text-sm text-muted-foreground">Paso {step} de 3</div>
 
         <Card className="shadow-none border-0">
           <CardContent className="p-0 grid gap-4">
             {err && <div className="text-red-600 text-sm">{err}</div>}
 
+            {/* Paso 1: Básico + geolocalización */}
             {step === 1 && (
-              <div className="grid grid-cols-2 gap-4">
+              <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="text-[#65558F] text-sm">Nombre</label>
-                  <input className="border rounded-lg p-2 w-full" value={firstName} onChange={e => setFirstName(e.target.value)} />
+                  <input
+                    className="border rounded-lg p-2 w-full"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className="text-[#65558F] text-sm">Apellido</label>
-                  <input className="border rounded-lg p-2 w-full" value={lastName} onChange={e => setLastName(e.target.value)} />
+                  <input
+                    className="border rounded-lg p-2 w-full"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
                 </div>
                 <div>
                   <label className="text-[#65558F] text-sm">Fecha Nacimiento</label>
-                  <input type="date" className="border rounded-lg p-2 w-full" value={birthDate} onChange={e => setBirthDate(e.target.value)} />
+                  <input
+                    type="date"
+                    className="border rounded-lg p-2 w-full"
+                    value={birthDate}
+                    onChange={(e) => setBirthDate(e.target.value)}
+                  />
                 </div>
-                <div className="col-span-2">
+                <div className="sm:col-span-2">
                   <label className="text-[#65558F] text-sm">Descripción</label>
-                  <textarea className="border rounded-lg p-2 w-full h-20" value={bio} onChange={e => setBio(e.target.value)} />
+                  <textarea
+                    className="border rounded-lg p-2 w-full h-20"
+                    value={bio}
+                    onChange={(e) => setBio(e.target.value)}
+                  />
                 </div>
-              </div>
+                <div className="sm:col-span-2 text-xs text-muted-foreground">
+                  {geoError
+                    ? <span className="text-red-600">{geoError}</span>
+                    : latitude != null && longitude != null
+                      ? <>Ubicación detectada: <strong>{latitude.toFixed(6)}, {longitude.toFixed(6)}</strong></>
+                      : "Obteniendo ubicación..."}
+                </div>
+              </section>
             )}
 
+            {/* Paso 2: Instrumentos + principal + géneros */}
             {step === 2 && (
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[#65558F] text-sm">País</label>
-                  <select className="border rounded-lg p-2 w-full"
-                    value={countryId}
-                    onChange={(e) => setCountryId(e.target.value ? Number(e.target.value) : "")}
-                    disabled={loadingCountries}
-                  >
-                    <option value="">{countryPH}</option>
-                    {countries.map(c => <option key={c.idCountry} value={c.idCountry}>{c.countryDesc}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[#65558F] text-sm">Provincia</label>
-                  <select className="border rounded-lg p-2 w-full"
-                    value={provinceId}
-                    onChange={(e) => setProvinceId(e.target.value ? Number(e.target.value) : "")}
-                    disabled={!countryId || loadingProvinces}
-                  >
-                    <option value="">{provincePH}</option>
-                    {provinces.map(p => <option key={p.idProvince} value={p.idProvince}>{p.provinceDesc}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[#65558F] text-sm">Ciudad</label>
-                  <select className="border rounded-lg p-2 w-full"
-                    value={cityId}
-                    onChange={(e) => setCityId(e.target.value ? Number(e.target.value) : "")}
-                    disabled={!provinceId || loadingCities}
-                  >
-                    <option value="">{cityPH}</option>
-                    {cities.map(c => <option key={c.idCity} value={c.idCity}>{c.cityDesc}</option>)}
-                  </select>
-                </div>
-              </div>
-            )}
-
-            {step === 3 && (
-              <div className="grid grid-cols-1 gap-4">
+              <section className="grid gap-4">
                 <div>
                   <label className="text-[#65558F] text-sm">Instrumentos</label>
                   <Select<Instrument, true>
@@ -338,24 +262,117 @@ export default function MusicianWizard({
                     className="text-[#65558F]"
                   />
                 </div>
+
+                {selectedInstruments.length > 0 && (
+                  <div className="rounded-lg border p-3">
+                    <div className="text-sm text-[#65558F] mb-2">Seleccioná el instrumento principal</div>
+                    <div className="grid gap-2">
+                      {selectedInstruments.map((i) => (
+                        <label key={i.idInstrument} className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="primaryInstrument"
+                            checked={primaryInstrumentId === i.idInstrument}
+                            onChange={() => setPrimaryInstrumentId(i.idInstrument)}
+                          />
+                          <span>{i.instrumentName}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {needPrimary && (
+                      <div className="text-xs text-red-600 mt-1">Elegí un instrumento principal.</div>
+                    )}
+                  </div>
+                )}
+
                 <div>
-                  <label className="text-[#65558F] text-sm">Nivel de Experiencia</label>
-                  <Select
-                    options={experienceOptions}
-                    value={experience}
-                    onChange={(v) => setExperience(v)}
-                    placeholder="Selecciona nivel"
+                  <label className="text-[#65558F] text-sm">Géneros</label>
+                  <Select<Genre, true>
+                    isMulti
+                    isLoading={loadingGenres}
+                    options={genresRaw}
+                    value={selectedGenres}
+                    onChange={(vals: OnChangeValue<Genre, true>) =>
+                      setSelectedGenres(vals as Genre[])
+                    }
+                    getOptionLabel={(g) => g.genreName}
+                    getOptionValue={(g) => String(g.idGenre)}
+                    placeholder="Selecciona géneros"
                     className="text-[#65558F]"
                   />
                 </div>
-              </div>
+              </section>
             )}
 
-            {/* Footer botones */}
+            {/* Paso 3: Configuración de disponibilidad y experiencia */}
+            {step === 3 && (
+              <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[#65558F] text-sm">Años de experiencia</label>
+                  <input
+                    type="number"
+                    className="border rounded-lg p-2 w-full"
+                    value={typeof experienceYears === "number" ? experienceYears : ""}
+                    onChange={(e) =>
+                      setExperienceYears(e.target.value === "" ? "" : Math.max(0, Number(e.target.value)))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-[#65558F] text-sm">Nivel</label>
+                  <select
+                    className="border rounded-lg p-2 w-full"
+                    value={skillLevel}
+                    onChange={(e) => setSkillLevel(e.target.value as SkillLevel)}
+                  >
+                    <option value="beginner">Principiante</option>
+                    <option value="intermediate">Intermedio</option>
+                    <option value="advanced">Avanzado</option>
+                    <option value="professional">Profesional</option>
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    id="isAvailable"
+                    type="checkbox"
+                    checked={isAvailable}
+                    onChange={(e) => setIsAvailable(e.target.checked)}
+                  />
+                  <label htmlFor="isAvailable" className="text-sm text-[#65558F]">Disponible para tocar</label>
+                </div>
+                <div>
+                  <label className="text-[#65558F] text-sm">Radio de viaje (km)</label>
+                  <input
+                    type="number"
+                    className="border rounded-lg p-2 w-full"
+                    value={typeof travelRadiusKm === "number" ? travelRadiusKm : ""}
+                    onChange={(e) =>
+                      setTravelRadiusKm(e.target.value === "" ? "" : Math.max(0, Number(e.target.value)))
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="text-[#65558F] text-sm">Visibilidad</label>
+                  <select
+                    className="border rounded-lg p-2 w-full"
+                    value={visibility}
+                    onChange={(e) => setVisibility(e.target.value as Visibility)}
+                  >
+                    <option value="city">Ciudad</option>
+                    <option value="province">Provincia</option>
+                    <option value="country">País</option>
+                    <option value="global">Global</option>
+                  </select>
+                </div>
+              </section>
+            )}
+
+            {/* Footer */}
             <div className="mt-2 flex items-center justify-between">
               <Button variant="ghost" onClick={() => (step === 1 ? onOpenChange(false) : back())}>
                 {step === 1 ? "Cancelar" : "Atrás"}
               </Button>
+
               {step < 3 ? (
                 <Button
                   className="bg-[#65558F] hover:bg-[#51447A] text-white"
@@ -367,22 +384,36 @@ export default function MusicianWizard({
               ) : (
                 <Button
                   className="bg-[#65558F] hover:bg-[#51447A] text-white"
+                  disabled={!canSubmit}
                   onClick={() => {
-                    const payload = {
-                      profile: { displayName: `${firstName} ${lastName}`, bio },
+                    const instruments = selectedInstruments.map((i) => ({
+                      idInstrument: i.idInstrument,
+                      isPrimary: i.idInstrument === primaryInstrumentId,
+                    }));
+                    const genres = selectedGenres.map((g) => ({ idGenre: g.idGenre }));
+
+                    const payload: WizardCompletePayload = {
+                      profile: {
+                        displayName,
+                        bio: bio || null,
+                        idAddress: null,
+                        latitude,
+                        longitude,
+                      },
                       musician: {
-                        birthDate,
-                        skillLevel: experience?.value ?? "intermediate",
-                        isAvailable: true,
-                        travelRadiusKm: 10,
-                        visibility: "city" as Visibility,
-                        instruments: selectedInstruments.map(i => ({ idInstrument: i.idInstrument, isPrimary: false }))
-                      }
+                        birthDate: birthDate,
+                        experienceYears: typeof experienceYears === "number" ? experienceYears : 1,
+                        skillLevel,
+                        isAvailable,
+                        travelRadiusKm: typeof travelRadiusKm === "number" ? travelRadiusKm : 10,
+                        visibility,
+                        instruments,
+                        genres,
+                      },
                     };
                     onComplete?.(payload);
                     onOpenChange(false);
                   }}
-                  disabled={!canSubmit}
                 >
                   Finalizar
                 </Button>
@@ -393,4 +424,4 @@ export default function MusicianWizard({
       </DialogContent>
     </Dialog>
   );
-};
+}

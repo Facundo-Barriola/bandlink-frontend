@@ -37,8 +37,8 @@ type Api = {
         description: string | null;
         roleInBand: string | null;
         isAdmin: boolean;
-        joinedAt: Date|null;
-        leftAt: Date|null;
+        joinedAt: Date | null;
+        leftAt: Date | null;
         membersCount: number;
         genres: string[];
     }>;
@@ -54,18 +54,17 @@ type Api = {
 };
 
 
-export default function MusicianProfile() {
+export default function MusicianProfile({ viewUserId }: { viewUserId?: number }) {
     const router = useRouter();
     const [data, setData] = useState<Api | null>(null);
     const [loading, setLoading] = useState(true);
     const { user, ready } = useUser();
-    const { idUser: idFromRoute } = useParams<{ idUser?: string }>();
-    const { idUser: routeId } = useParams<{ idUser?: string }>();
+    const params = useParams() as { idUser?: string; id?: string };
+    const routeId = (params?.idUser ?? params?.id) as string | undefined;
+    const effectiveId = viewUserId != null ? String(viewUserId) : routeId;
 
     useEffect(() => {
-        if (!ready) return;
-        const id = routeId ?? (user?.idUser ? String(user.idUser) : null);
-        if (!id || Number.isNaN(Number(id))) {
+        if (!effectiveId || Number.isNaN(Number(effectiveId))) {
             setLoading(false);
             return;
         }
@@ -75,7 +74,7 @@ export default function MusicianProfile() {
 
         (async () => {
             try {
-                const res = await fetch(`${API_URL}/directory/${id}/profile`, {
+                const res = await fetch(`${API_URL}/directory/${effectiveId}/profile`, {
                     signal: ac.signal,
                     headers: { Accept: "application/json" },
                     credentials: "include",
@@ -102,7 +101,7 @@ export default function MusicianProfile() {
             active = false;
             ac.abort();
         }
-    }, [ready, idFromRoute, user?.idUser]);
+    }, [effectiveId]);
 
     if (loading) {
         return (
@@ -132,7 +131,11 @@ export default function MusicianProfile() {
     }
 
     const { userData, musician, bands, eventsCreated } = data;
-
+    const isOwner = ready && user?.idUser === Number(effectiveId);
+    const toNum = (v: unknown) => (v === null || v === undefined ? NaN : Number(v));
+    const hasCoords =
+        Number.isFinite(toNum(userData.latitude)) &&
+        Number.isFinite(toNum(userData.longitude));
     return (
         <div className="max-w-6xl mx-auto p-6 space-y-8">
             {/* Header */}
@@ -142,7 +145,7 @@ export default function MusicianProfile() {
                         idUser={userData.idUser}
                         displayName={userData.displayName}
                         src={userData.avatarUrl}
-                        editable={user?.idUser === userData.idUser}   // solo editable si es tu propio perfil
+                        editable={isOwner}
                         onUploaded={(url) =>
                             setData(prev => prev
                                 ? { ...prev, userData: { ...prev.userData!, avatarUrl: url } }
@@ -168,18 +171,20 @@ export default function MusicianProfile() {
                             )}
                             {userData.latitude != null && userData.longitude != null && (
                                 <span className="inline-flex items-center gap-1">
-                                    <MapPin size={16} /> {userData.latitude.toFixed(3)},{userData.longitude.toFixed(3)}
+                                    <MapPin size={16} /> {toNum(userData.latitude).toFixed(3)},{toNum(userData.longitude).toFixed(3)}
                                 </span>
                             )}
                         </div>
                     </div>
 
-                    <div className="flex gap-2">
-                        <Button className="bg-[#65558F] text-white" variant="secondary" onClick={() => router.push(`/profile/${userData.idUser}/edit`)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Editar Perfil
-                        </Button>
-                    </div>
+                    {isOwner && (
+                        <div className="flex gap-2">
+                            <Button className="bg-[#65558F] text-white" variant="secondary" onClick={() => router.push(`/profile/${userData.idUser}/edit`)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Editar Perfil
+                            </Button>
+                        </div>
+                    )}
                 </CardContent>
             </Card>
 
@@ -263,14 +268,10 @@ export default function MusicianProfile() {
                                         <Button size="sm" onClick={() => router.push(`/bands/${b.idBand}`)}>
                                             Ver más
                                         </Button>
-                                        {b.isAdmin ? (
-                                            <Button size="sm" variant="secondary" onClick={() => router.push(`/bands/${b.idBand}/manage`)}>
-                                                Administrar
-                                            </Button>
-                                        ) : (
-                                            <Button size="sm" variant="secondary" onClick={() => router.push(`/bands/${b.idBand}/leave`)}>
-                                                Salir de la banda
-                                            </Button>
+                                        {isOwner && (
+                                            b.isAdmin
+                                                ? <Button size="sm" variant="secondary" onClick={() => router.push(`/bands/${b.idBand}/manage`)}>Administrar</Button>
+                                                : <Button size="sm" variant="secondary" onClick={() => router.push(`/bands/${b.idBand}/leave`)}>Salir de la banda</Button>
                                         )}
                                     </div>
                                 </CardContent>
@@ -317,9 +318,11 @@ export default function MusicianProfile() {
                                         <Button size="sm" onClick={() => router.push(`/events/${e.idEvent}`)}>
                                             Ver
                                         </Button>
-                                        <Button size="sm" variant="secondary" onClick={() => router.push(`/events/${e.idEvent}/edit`)}>
-                                            Editar
-                                        </Button>
+                                        {isOwner && (
+                                            <Button size="sm" variant="secondary" onClick={() => router.push(`/events/${e.idEvent}/edit`)}>
+                                                Editar
+                                            </Button>
+                                        )}
                                     </div>
                                 </CardContent>
                             </Card>

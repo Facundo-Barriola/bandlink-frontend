@@ -71,20 +71,21 @@ export default function Discover() {
                                 {!loading && results.map(r => (
                                     <button
 
-                                        key={r.idMusician}
+                                        key={r.idUser ?? r.idMusician}
                                         type="button"
                                         onMouseDown={(e) => {
                                             e.preventDefault();              // evita que el blur mate el click
                                             router.push(`/profile/${r.idUser}`);
                                             setTerm("");                     // opcional: cerrar el dropdown
                                         }}
+                                        onClick={() => router.push(`/profile/${r.idUser}`)}
                                         className="w-full text-left px-3 py-2 rounded-xl hover:bg-muted/60 flex items-center gap-3"
                                     >
                                         <div className="h-9 w-9 rounded-full bg-gradient-to-br from-purple-200 to-[#65558F]" />
                                         <div className="min-w-0">
                                             <div className="font-medium text-[#65558F] truncate">{r.displayName}</div>
                                             <div className="text-xs text-muted-foreground truncate">
-                                                {r.instruments.slice(0, 3).join(", ") || r.genres.slice(0, 3).join(", ")}
+                                                 {(r.instruments?.slice?.(0,3)?.join(", ")) ?? (r.genres?.slice?.(0,3)?.join(", ")) ?? ""}
                                             </div>
                                         </div>
                                     </button>
@@ -202,7 +203,7 @@ export default function Discover() {
                                             <Badge key={idx} variant="secondary" className="bg-[#65558F] text-white">{ins}</Badge>
                                         ))}
                                     </div>
-                                    <Button variant="secondary" onClick={() => router.push(`/musicians/${m.id}`)}>Ver perfil</Button>
+                                    <Button variant="secondary" onClick={() => router.push(`/profile/${m.id}`)}>Ver perfil</Button>
                                 </CardContent>
                             </Card>
                         ))}

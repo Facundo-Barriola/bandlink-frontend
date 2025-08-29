@@ -110,9 +110,12 @@ export default function MusicianProfileEdit() {
     // ==== Carga inicial ====
     useEffect(() => {
         if (!ready) return;
-        const candidate = idFromRoute ?? (user?.idUser ? String(user.idUser) : null);
+        if (!user?.idUser) return; // esperar a saber quién sos
+        const candidate = user?.idUser ? String(user.idUser) : null;
         const id = candidate && candidate !== "undefined" && candidate !== "null" ? candidate : null;
-
+        if (idFromRoute && Number(idFromRoute) !== user.idUser) {
+            router.replace(`/profile/${idFromRoute}`); // ver perfil ajeno sin editar
+        }
         if (!id) {
             setLoading(false);
             console.warn("No idUser (ruta ni contexto). ¿Estás logueado o en /profile/[idUser]/edit?");
@@ -172,7 +175,7 @@ export default function MusicianProfileEdit() {
             }
         })();
         return () => ac.abort();
-    }, [ready, idFromRoute, user?.idUser]);
+    }, [ready, idFromRoute, user?.idUser, router]);
 
     // ==== Handlers de instrumentos ====
     const primaryIndex = useMemo(() => instruments.findIndex((i) => i.isPrimary), [instruments]);
