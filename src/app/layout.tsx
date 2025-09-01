@@ -1,6 +1,7 @@
 // app/layout.tsx
 import "./globals.css";
-import { UserProvider } from "@/app/context/userContext"; 
+import { UserProvider } from "@/app/context/userContext";
+import { Toaster } from "sonner";
 
 export const metadata = {
   title: "BandLink",
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <UserProvider>
           {children}
+          <Toaster position="top-right" richColors closeButton />
         </UserProvider>
       </body>
     </html>

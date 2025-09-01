@@ -6,7 +6,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AvatarEditable } from "@/components/ui/AvatarEditable";
-import { CalendarDays, Users, Crown, MapPin, Pencil } from "lucide-react";
+import { toast } from "sonner";
+import { CalendarDays, Users, Crown, MapPin, Pencil, UserPlus } from "lucide-react";
 import { useUser } from "@/app/context/userContext";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -103,6 +104,19 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
         }
     }, [effectiveId]);
 
+    async function handleSendRequest(targetId: number) {
+        const res = await fetch(`${API_URL}/network/connections/${targetId}`, {
+            method: "POST",
+            credentials: "include",
+        });
+        const json = await res.json();
+        if (json.ok) {
+            toast.success(json.data?.info ?? "Solicitud enviada");
+        } else {
+            toast.error(json.error ?? "No se pudo enviar la solicitud");
+        }
+    }
+
     if (loading) {
         return (
             <div className="max-w-6xl mx-auto p-6 animate-pulse">
@@ -182,6 +196,15 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
                             <Button className="bg-[#65558F] text-white" variant="secondary" onClick={() => router.push(`/profile/${userData.idUser}/edit`)}>
                                 <Pencil className="mr-2 h-4 w-4" />
                                 Editar Perfil
+                            </Button>
+                        </div>
+                    )}
+
+                    {!isOwner && (
+                        <div className="text-sm text-muted-foreground">
+                            <Button className="bg-[#65558F] text-white" variant="secondary" onClick={() => handleSendRequest(Number(effectiveId))}>
+                                <UserPlus size={18} />
+                                Conectar
                             </Button>
                         </div>
                     )}
