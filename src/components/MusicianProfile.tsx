@@ -41,7 +41,7 @@ type Api = {
         joinedAt: Date | null;
         leftAt: Date | null;
         membersCount: number;
-        genres: string[];
+        genres: { idGenre: number; genreName: string }[];
     }>;
     eventsCreated: Array<{
         idEvent: number;
@@ -276,9 +276,9 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
                                         </div>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
-                                        {b.genres.map((gn, idx) => (
-                                            <Badge key={`band-${b.idBand}-genre-${idx}-${gn}`} variant="outline">
-                                                {gn}
+                                        {b.genres.map((g) => (
+                                            <Badge key={`band-${b.idBand}-genre-${g.idGenre}`} variant="outline">
+                                                {g.genreName}
                                             </Badge>
                                         ))}
                                     </div>

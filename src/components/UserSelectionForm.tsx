@@ -4,9 +4,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import MusicianWizard from "@/components/MusicianWizard";
-import Select from "react-select";
-import Image from "next/image";
-import StudioWizard from "./StudioWizard";
+import StudioWizard, { type WizardCompletePayload } from "./StudioWizard";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 type Role = "musico" | "sala" | "estandar";
@@ -109,25 +107,40 @@ export default function UserSelectionForm({
     }
   }
 
-  async function registerFullAsStudio(payload: StudioWizardPayload) {
-          console.log("REGISTER STUDIO payload =>", {
-      email,password, role: "sala",
+  async function registerFullAsStudio(payload: WizardCompletePayload) {
+    console.log("REGISTER STUDIO payload =>", {
+      email, password, role: "sala",
       profile: payload.profile,
       studio: payload.studio
     });
     try {
       setSubmitting(true);
       setError(null);
+      const apiPayload = {
+        email,
+        password,
+        role: "sala" as const,
+        profile: payload.profile,
+        studio: {
+          legalName: payload.studio.legalName ?? null,
+          phone: payload.studio.phone ?? null,
+          website: payload.studio.website ?? null,
+          cancellationPolicy: payload.studio.cancellationPolicy ?? null,
+          openingHours: payload.studio.openingHours ?? null,
+          amenities: payload.studio.amenities.map(a => a.idAmenity),
+          rooms: payload.studio.rooms.map(r => ({
+            roomName: r.roomName,
+            capacity: r.capacity ?? null,
+            hourlyPrice: r.hourlyPrice,
+            notes: r.notes ?? null,
+            equipment: r.equipment ?? null,
+          })),
+        },
+      };
       const res = await fetch(`${API_URL}/account/registerFull`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          password,
-          role: "sala",
-          profile: payload.profile,
-          studio: payload.studio
-        }),
+        body: JSON.stringify(apiPayload),
       });
 
       if (!res.ok) {

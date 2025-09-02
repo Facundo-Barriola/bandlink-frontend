@@ -28,7 +28,7 @@ type RoomInput = {
   equipmentText?: string;
 };
 
-type WizardCompletePayload = {
+export type WizardCompletePayload = {
   profile: {
     displayName: string;
     bio: string | null;

@@ -14,6 +14,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import { BandWizard } from "@/components/BandWizard";
 
 type Booking = {
   id: string;
@@ -93,7 +94,6 @@ export default function HomePage() {
     },
   ];
 
-  /** Carrusel horizontal para sugerencias */
   const railRef = useRef<HTMLDivElement>(null);
   const scrollBy = (dir: "left" | "right") => {
     const rail = railRef.current;
@@ -162,10 +162,12 @@ export default function HomePage() {
                 Agrupa músicos, administra roles y agenda ensayos en un solo lugar.
               </p>
             </div>
-            <Button className={`${primary} rounded-xl`} onClick={() => location.href = "/bands/new"}>
-              <PlusCircle className="mr-2 h-4 w-4" />
-              Crear banda
-            </Button>
+            <BandWizard
+              triggerLabel="Crear banda"
+              onCreated={(idBand) => {
+                window.location.assign(`/band/${idBand}`);
+              }}
+            />
           </CardContent>
         </Card>
 
