@@ -165,7 +165,7 @@ export default function HomePage() {
             <BandWizard
               triggerLabel="Crear banda"
               onCreated={(idBand) => {
-                window.location.assign(`/band/${idBand}`);
+                window.location.assign(`/bands/${idBand}`);
               }}
             />
           </CardContent>

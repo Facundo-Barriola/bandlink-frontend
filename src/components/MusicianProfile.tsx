@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AvatarEditable } from "@/components/ui/AvatarEditable";
 import { toast } from "sonner";
-import { CalendarDays, Users, Crown, MapPin, Pencil, UserPlus } from "lucide-react";
+import { CalendarDays, Users, Crown, MapPin, Pencil, UserPlus, Trash2 } from "lucide-react";
 import { useUser } from "@/app/context/userContext";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -63,6 +63,7 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
     const params = useParams() as { idUser?: string; id?: string };
     const routeId = (params?.idUser ?? params?.id) as string | undefined;
     const effectiveId = viewUserId != null ? String(viewUserId) : routeId;
+    const [deletingBandId, setDeletingBandId] = useState<number | null>(null);
 
     useEffect(() => {
         if (!effectiveId || Number.isNaN(Number(effectiveId))) {
@@ -103,7 +104,43 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
             ac.abort();
         }
     }, [effectiveId]);
+    async function handleDeleteBand(idBand: number, bandName?: string) {
+        if (!Number.isFinite(idBand)) return;
+        const ok = window.confirm(
+            `¿Seguro que querés eliminar la banda${bandName ? ` “${bandName}”` : ""}? Esta acción es permanente.`
+        );
+        if (!ok) return;
 
+        try {
+            setDeletingBandId(idBand);
+
+            // Intento principal: DELETE /bands/:id
+            const res = await fetch(`${API_URL}/bands/${idBand}`, {
+                method: "DELETE",
+                credentials: "include",
+                headers: { Accept: "application/json" },
+            });
+
+            let json: any = {};
+            try { json = await res.json(); } catch { }
+
+            if (!res.ok || json?.ok === false) {
+                // Mensajes “amigables”
+                if (res.status === 403) throw new Error("No sos admin de esta banda.");
+                if (res.status === 404) throw new Error("La banda no existe.");
+                throw new Error(json?.error ?? `HTTP ${res.status}`);
+            }
+
+            // Actualizá el listado en memoria
+            setData(prev => prev ? { ...prev, bands: prev.bands.filter(b => b.idBand !== idBand) } : prev);
+            toast.success("Banda eliminada");
+        } catch (e: any) {
+            console.error(e);
+            toast.error(e?.message ?? "No se pudo eliminar la banda");
+        } finally {
+            setDeletingBandId(null);
+        }
+    }
     async function handleSendRequest(targetId: number) {
         const res = await fetch(`${API_URL}/network/connections/${targetId}`, {
             method: "POST",
@@ -291,10 +328,36 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
                                         <Button size="sm" onClick={() => router.push(`/bands/${b.idBand}`)}>
                                             Ver más
                                         </Button>
+
                                         {isOwner && (
-                                            b.isAdmin
-                                                ? <Button size="sm" variant="secondary" onClick={() => router.push(`/bands/${b.idBand}/manage`)}>Administrar</Button>
-                                                : <Button size="sm" variant="secondary" onClick={() => router.push(`/bands/${b.idBand}/leave`)}>Salir de la banda</Button>
+                                            b.isAdmin ? (
+                                                <>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        onClick={() => router.push(`/bands/${b.idBand}/manage`)}
+                                                    >
+                                                        Administrar
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="destructive"
+                                                        onClick={() => handleDeleteBand(b.idBand, b.name)}
+                                                        disabled={deletingBandId === b.idBand}
+                                                    >
+                                                        <Trash2 className="mr-2 h-4 w-4" />
+                                                        {deletingBandId === b.idBand ? "Eliminando..." : "Eliminar"}
+                                                    </Button>
+                                                </>
+                                            ) : (
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    onClick={() => router.push(`/bands/${b.idBand}/leave`)}
+                                                >
+                                                    Salir de la banda
+                                                </Button>
+                                            )
                                         )}
                                     </div>
                                 </CardContent>

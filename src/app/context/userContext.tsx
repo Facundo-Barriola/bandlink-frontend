@@ -9,6 +9,7 @@ export type AppUser = {
     idUser: number;
     email: string;
     idGroup: number;
+    idMusician?: number;
 } | null;
 
 

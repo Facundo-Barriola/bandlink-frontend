@@ -47,18 +47,48 @@ type BandView = {
   genres: GenreObj[];
   members: Member[];
 };
-
+function isBandView(d: BandView | null): d is BandView {
+  return !!d && Number.isFinite(Number(d.idBand));
+}
 function normalizePayload(raw: any): BandView {
-  const band = raw?.band ?? {};
-  const genresRaw = Array.isArray(raw?.genres) ? raw.genres : [];
-  const genres: GenreObj[] = genresRaw.map((g: any, i: number) =>
-    typeof g === "string" ? { idGenre: i + 1, genreName: g } : g
+  // Soporta objeto plano o { band, genres, members }
+  const base = raw?.band ?? raw ?? {};
+
+  const genresSrc = Array.isArray(raw?.genres)
+    ? raw.genres
+    : Array.isArray(base?.genres)
+      ? base.genres
+      : [];
+  const genres: GenreObj[] = genresSrc.map((g: any, i: number) =>
+    typeof g === "string"
+      ? { idGenre: i + 1, genreName: g }
+      : {
+        idGenre: g?.idGenre ?? g?.id ?? (i + 1),
+        genreName: g?.genreName ?? g?.name ?? String(g ?? ""),
+      }
   );
-  const members: Member[] = Array.isArray(raw?.members) ? raw.members : [];
+
+  const membersSrc = Array.isArray(raw?.members)
+    ? raw.members
+    : Array.isArray(base?.members)
+      ? base.members
+      : [];
+  const members: Member[] = membersSrc.map((m: any) => ({
+    idMusician: Number(m?.idMusician ?? m?.musicianId ?? m?.id ?? 0),
+    displayName:
+      m?.displayName ??
+      m?.name ??
+      (m?.idMusician ? `Músico ${m.idMusician}` : "Miembro"),
+    avatarUrl: m?.avatarUrl ?? null,
+    roleInBand: m?.roleInBand ?? null,
+    isAdmin: Boolean(m?.isAdmin),
+    joinedAt: m?.joinedAt ?? null,
+  }));
+
   return {
-    idBand: band.idBand,
-    name: band.name,
-    description: band.description ?? null,
+    idBand: Number(base?.idBand ?? base?.id ?? base?.id_band ?? 0) || 0,
+    name: base?.name ?? "",
+    description: base?.description ?? null,
     genres,
     members,
   };
@@ -66,14 +96,16 @@ function normalizePayload(raw: any): BandView {
 
 export default function BandHome() {
   const router = useRouter();
-  const params = useParams() as { id: string; idBand?: string };
-  const idRaw = params.id ?? params.idBand;
-  const bandId = Number(idRaw);
+  const params = useParams() as { id?: string; idBand?: string };
+  const idRaw = params?.id ?? params?.idBand;
+  const bandId = idRaw != null ? Number(idRaw) : NaN;
+  const hasId = idRaw != null && Number.isFinite(bandId);
 
-  const { user, ready } = useUser(); // opcional
+  const { user, ready } = useUser();
   const [data, setData] = useState<BandView | null>(null);
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [attempted, setAttempted] = useState(false);
 
   const isAdmin = useMemo(() => {
     if (!ready || !user || !data) return false;
@@ -83,15 +115,11 @@ export default function BandHome() {
   }, [ready, user, data]);
 
   useEffect(() => {
-    if (!Number.isFinite(bandId)) {
-      setLoading(false);
-      setErrMsg("ID de banda inválido.");
-      return;
-    }
+    if (!hasId) return;
     const ac = new AbortController();
     setLoading(true);
     setErrMsg(null);
-
+    setAttempted(false);
     (async () => {
       try {
         const res = await fetch(`${API_URL}/bands/${bandId}`, {
@@ -109,15 +137,28 @@ export default function BandHome() {
         setData(normalizePayload(payload));
       } catch (e: any) {
         console.error(e);
+        if (e?.name === "AbortError" || String(e?.message).includes("aborted")) return;
+        console.error(e);
         setErrMsg(e?.message ?? "No se pudo cargar la banda.");
       } finally {
+        setAttempted(true);
         setLoading(false);
       }
     })();
-
     return () => ac.abort("cleanup");
-  }, [bandId]);
-
+  }, [hasId, bandId]);
+  
+  if (!hasId) {
+    return (
+      <div className="max-w-5xl mx-auto p-6 space-y-6">
+        <Card className="rounded-2xl">
+          <CardContent className="p-6">
+            <p className="text-sm text-muted-foreground">Cargando…</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
   if (loading) {
     return (
       <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -143,21 +184,26 @@ export default function BandHome() {
     );
   }
 
-  if (errMsg || !data) {
-    return (
-      <div className="max-w-3xl mx-auto p-6">
-        <Card className="rounded-2xl">
-          <CardContent className="p-8 text-center">
-            <p className="text-red-600 mb-4">{errMsg ?? "No se encontró la banda."}</p>
-            <Button variant="outline" onClick={() => router.back()}>
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Volver
-            </Button>
-          </CardContent>
-        </Card>
+
+ if (!isBandView(data)) {
+  return (
+    <div className="max-w-5xl mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <Button variant="outline" onClick={() => router.back()}>
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Volver
+        </Button>
       </div>
-    );
-  }
+      <Card className="rounded-2xl">
+        <CardContent className="p-6">
+          <p className="text-sm text-muted-foreground">
+            {errMsg ?? "No se encontró la banda."}
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
   const { name, description, genres, members } = data;
 
