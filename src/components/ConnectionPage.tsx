@@ -87,7 +87,6 @@ export default function ConnectionsPage() {
         return;
       }
       const list = await $fetch<any[]>(INVITES_LIST(userId));
-      // normalización light, por si el back trae otro shape
       const mapped: BandInviteRow[] = (list ?? []).map((it: any) => ({
         idBandInvite: Number(it?.idBandInvite ?? it?.id ?? 0),
         idBand: Number(it?.idBand ?? it?.band?.idBand ?? 0),
@@ -114,7 +113,6 @@ export default function ConnectionsPage() {
   }, []);
 
   async function handleAccept(idConnection: number) {
-    // Optimistic: quitamos de la lista primero
     const prev = rows;
     setRows((r) => r.filter((x) => x.idConnection !== idConnection));
     try {

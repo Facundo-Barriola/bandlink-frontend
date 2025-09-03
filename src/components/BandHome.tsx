@@ -1,4 +1,4 @@
-// app/bands/[id]/page.tsx
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -12,8 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Crown, Users, Music2, Pencil, ArrowLeft } from "lucide-react";
-// Si usás un context de usuario:
+import { Crown, Users, Music2, Pencil, ArrowLeft, } from "lucide-react";
+import {
+  Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useUser } from "@/app/context/userContext";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -100,6 +105,7 @@ export default function BandHome() {
   const idRaw = params?.id ?? params?.idBand;
   const bandId = idRaw != null ? Number(idRaw) : NaN;
   const hasId = idRaw != null && Number.isFinite(bandId);
+  const [myMusicianId, setMyMusicianId] = useState<number | null>(null);
 
   const { user, ready } = useUser();
   const [data, setData] = useState<BandView | null>(null);
@@ -107,12 +113,74 @@ export default function BandHome() {
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
 
+  const [openSearch, setOpenSearch] = useState(false);
+  const [titleS, setTitleS] = useState("");
+  const [descS, setDescS] = useState("");
+  const [instIdS, setInstIdS] = useState<string>("");
+  const [levelS, setLevelS] = useState<string>(""); // 'beginner' | 'intermediate' | 'advanced' | ...
+  const [remoteS, setRemoteS] = useState<boolean>(false);
+
   const isAdmin = useMemo(() => {
-    if (!ready || !user || !data) return false;
-    const myMusicianId = (user as any)?.idMusician ?? null;
-    if (!myMusicianId) return false;
+    if (!data || !Number.isFinite(myMusicianId as any)) return false;
     return data.members.some(m => m.idMusician === myMusicianId && m.isAdmin);
-  }, [ready, user, data]);
+  }, [data, myMusicianId]);
+
+  async function createSearch() {
+    try {
+      if (!titleS.trim()) {
+        toast.error("Título requerido");
+        return;
+      }
+      const body = {
+        title: titleS.trim(),
+        description: descS.trim() || null,
+        idInstrument: instIdS ? Number(instIdS) : null,
+        minSkillLevel: levelS || null,
+        isRemote: remoteS,
+      };
+      const res = await fetch(`${API_URL}/bands/${data!.idBand}/searches`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) throw new Error(json?.error ?? `HTTP ${res.status}`);
+      toast.success("Búsqueda publicada");
+      setOpenSearch(false);
+      setTitleS(""); setDescS(""); setInstIdS(""); setLevelS(""); setRemoteS(false);
+    } catch (e: any) {
+      toast.error(e?.message ?? "No se pudo publicar la búsqueda");
+    }
+  }
+
+  useEffect(() => {
+    if (!ready || !user) return;
+
+    const fromCtx = Number((user as any)?.idMusician);
+    if (Number.isFinite(fromCtx) && fromCtx > 0) {
+      setMyMusicianId(fromCtx);
+      return;
+    }
+
+    // fallback: mapear idUser -> idMusician
+    (async () => {
+      try {
+        const res = await fetch(`${API_URL}/directory/${user.idUser}/profile`, {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        const payload = json?.data ?? json;
+        const id = Number(payload?.musician?.idMusician);
+        if (Number.isFinite(id) && id > 0) setMyMusicianId(id);
+      } catch (e) {
+        // si falla, myMusicianId queda null y no se mostrarán botones
+        console.warn("No se pudo resolver idMusician del usuario:", e);
+      }
+    })();
+  }, [ready, user]);
 
   useEffect(() => {
     if (!hasId) return;
@@ -147,7 +215,7 @@ export default function BandHome() {
     })();
     return () => ac.abort("cleanup");
   }, [hasId, bandId]);
-  
+
   if (!hasId) {
     return (
       <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -185,25 +253,25 @@ export default function BandHome() {
   }
 
 
- if (!isBandView(data)) {
-  return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <Button variant="outline" onClick={() => router.back()}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Volver
-        </Button>
+  if (!isBandView(data)) {
+    return (
+      <div className="max-w-5xl mx-auto p-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <Button variant="outline" onClick={() => router.back()}>
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Volver
+          </Button>
+        </div>
+        <Card className="rounded-2xl">
+          <CardContent className="p-6">
+            <p className="text-sm text-muted-foreground">
+              {errMsg ?? "No se encontró la banda."}
+            </p>
+          </CardContent>
+        </Card>
       </div>
-      <Card className="rounded-2xl">
-        <CardContent className="p-6">
-          <p className="text-sm text-muted-foreground">
-            {errMsg ?? "No se encontró la banda."}
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
+    );
+  }
 
   const { name, description, genres, members } = data;
 
@@ -218,10 +286,50 @@ export default function BandHome() {
             Volver
           </Button>
           {isAdmin && (
-            <Button className="bg-[#65558F] text-white" onClick={() => router.push(`/bands/${data.idBand}/manage`)}>
-              <Pencil className="mr-2 h-4 w-4" />
-              Administrar
-            </Button>
+            <>
+              <Button className="bg-[#65558F] text-white" onClick={() => router.push(`/bands/${data.idBand}/manage`)}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Administrar
+              </Button>
+              <Dialog open={openSearch} onOpenChange={setOpenSearch}>
+                <DialogTrigger asChild>
+                  <Button className="bg-[#65558F] text-white">Publicar búsqueda</Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Nueva búsqueda de músico</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm">Título *</label>
+                      <Input value={titleS} onChange={(e) => setTitleS(e.target.value)} placeholder="Ej: Buscamos guitarrista líder" />
+                    </div>
+                    <div>
+                      <label className="text-sm">Descripción</label>
+                      <Textarea rows={4} value={descS} onChange={(e) => setDescS(e.target.value)} placeholder="Detalles, horarios, referencias..." />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-sm">ID Instrumento (opcional)</label>
+                        <Input value={instIdS} onChange={(e) => setInstIdS(e.target.value)} placeholder="Ej: 1 (Guitarra)" />
+                      </div>
+                      <div>
+                        <label className="text-sm">Nivel mínimo (opcional)</label>
+                        <Input value={levelS} onChange={(e) => setLevelS(e.target.value)} placeholder="beginner|intermediate|advanced..." />
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2">
+                      <Checkbox checked={remoteS} onCheckedChange={(v) => setRemoteS(Boolean(v))} />
+                      <span>Trabajo remoto / a distancia</span>
+                    </label>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setOpenSearch(false)}>Cancelar</Button>
+                    <Button className="bg-[#65558F] text-white" onClick={createSearch}>Publicar</Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </>
           )}
         </div>
       </div>
