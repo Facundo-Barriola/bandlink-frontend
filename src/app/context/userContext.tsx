@@ -8,8 +8,9 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 export type AppUser = {
     idUser: number;
     email: string;
-    idGroup: number;
+    idUserGroup: number;
     idMusician?: number;
+    idStudio?: number;
 } | null;
 
 

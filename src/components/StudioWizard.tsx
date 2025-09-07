@@ -35,6 +35,12 @@ export type WizardCompletePayload = {
     idAddress: number | null;
     latitude: number | null;
     longitude: number | null;
+    address?: {                
+      idCity: number;
+      street: string;
+      streetNum: number;
+      addressDesc?: string | null;
+    };
   };
   studio: {
     legalName?: string | null;
@@ -323,6 +329,16 @@ export default function StudioWizard({
       };
     });
 
+      const addressObj =
+    countryId && provinceId && cityId && street.trim() && typeof streetNum === "number"
+      ? {
+          idCity: Number(cityId),
+          street: street.trim(),
+          streetNum: Number(streetNum),
+          addressDesc: addressDesc || null,
+        }
+      : undefined;
+
     const payload: WizardCompletePayload = {
       profile: {
         displayName,
@@ -330,6 +346,7 @@ export default function StudioWizard({
         idAddress: null,
         latitude,
         longitude,
+        address: addressObj,
       },
       studio: {
         legalName: legalName || null,

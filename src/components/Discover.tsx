@@ -1,5 +1,5 @@
 "use client";
-
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,14 +14,26 @@ import {
     ChevronRight,
     Music2,
 } from "lucide-react";
+import { useStudioSearch } from "@/hooks/useStudioSearch";
 import { useMusicianSearch } from "@/hooks/useMusicianSearch";
 import React from "react";
+import { FilterButton } from "./ui/FilterButton";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
+
 
 export default function Discover() {
     const router = useRouter();
     const { term, setTerm, results, loading } = useMusicianSearch();
+    const { termStudio, setTermStudio, resultsStudio, loadingStudio } = useStudioSearch();
 
+    const [mode, setMode] = useState<"musico" | "estudio">("musico");
+    const activeTerm = mode === "musico" ? term : termStudio;
+    const isLoading = mode === "musico" ? loading : loadingStudio;
+    const suggestions =
+        mode === "musico"
+            ? results.map(m => ({ idUser: m.idUser, displayName: m.displayName }))
+            : resultsStudio.map(s => ({ idUser: s.idUser, displayName: s.displayName }));
     // Dummy data SOLO para layout (luego se reemplaza con componentes/queries reales)
     const trending = Array.from({ length: 6 }).map((_, i) => ({
         id: i + 1,
@@ -56,50 +68,66 @@ export default function Discover() {
                 <div className="flex items-center gap-3">
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+
+                        {/* INPUT controlado por el hook activo */}
                         <input
-                            value={term}
-                            onChange={(e) => setTerm(e.target.value)}
-                            placeholder="Descubre músicos, bandas o eventos cerca de ti"
+                            value={activeTerm}
+                            onChange={(e) => {
+                                const v = e.target.value;
+                                if (mode === "musico") {
+                                    setTerm(v);
+                                } else {
+                                    setTermStudio(v);
+                                }
+                            }}
+                            placeholder={
+                                mode === "musico"
+                                    ? "Descubre músicos cerca de ti"
+                                    : "Busca estudios de ensayo"
+                            }
                             className="w-full rounded-full pl-10 pr-12 py-3 bg-muted/60 focus:outline-none focus:ring-2 focus:ring-[#65558F] placeholder:text-muted-foreground"
                         />
-                        {term.trim().length >= 2 && (
+
+                        {/* Dropdown resultados */}
+                        {activeTerm.trim().length >= 2 && (
                             <div className="absolute z-20 mt-2 w-full bg-background rounded-2xl shadow-lg border p-2">
-                                {loading && <div className="p-3 text-sm text-muted-foreground">Buscando…</div>}
-                                {!loading && results.length === 0 && (
+                                {isLoading && (
+                                    <div className="p-3 text-sm text-muted-foreground">Buscando…</div>
+                                )}
+
+                                {!isLoading && suggestions.length === 0 && (
                                     <div className="p-3 text-sm text-muted-foreground">Sin resultados</div>
                                 )}
-                                {!loading && results.map(r => (
-                                    <button
 
-                                        key={r.idUser ?? r.idMusician}
-                                        type="button"
-                                        onMouseDown={(e) => {
-                                            e.preventDefault();              // evita que el blur mate el click
-                                            router.push(`/profile/${r.idUser}`);
-                                            setTerm("");                     // opcional: cerrar el dropdown
-                                        }}
-                                        onClick={() => router.push(`/profile/${r.idUser}`)}
-                                        className="w-full text-left px-3 py-2 rounded-xl hover:bg-muted/60 flex items-center gap-3"
-                                    >
-                                        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-purple-200 to-[#65558F]" />
-                                        <div className="min-w-0">
-                                            <div className="font-medium text-[#65558F] truncate">{r.displayName}</div>
-                                            <div className="text-xs text-muted-foreground truncate">
-                                                 {(r.instruments?.slice?.(0,3)?.join(", ")) ?? (r.genres?.slice?.(0,3)?.join(", ")) ?? ""}
+                                {!isLoading &&
+                                    suggestions.map((r) => (
+                                        <button
+                                            key={r.idUser}
+                                            type="button"
+                                            onMouseDown={(e) => {
+                                                e.preventDefault();
+                                                router.push(`/profile/${r.idUser}`);
+                                                // limpiar campo del hook activo (opcional)
+                                                if (mode === "musico") setTerm("");
+                                                else setTermStudio("");
+                                            }}
+                                            className="w-full text-left px-3 py-2 rounded-xl hover:bg-muted/60 flex items-center gap-3"
+                                        >
+                                            <div className="h-9 w-9 rounded-full bg-gradient-to-br from-purple-200 to-[#65558F]" />
+                                            <div className="min-w-0">
+                                                {/* Para estudio: se ve el nombre del estudio (displayName) */}
+                                                <div className="font-medium text-[#65558F] truncate">
+                                                    {r.displayName}
+                                                </div>
+                                                {/* Mantengo simple: sin subtítulo extra para estudios */}
                                             </div>
-                                        </div>
-                                    </button>
-                                ))}
+                                        </button>
+                                    ))}
                             </div>
                         )}
-                        <Button
-                            className="absolute right-1 top-1/2 -translate-y-1/2 rounded-full bg-[#65558F] text-white hover:bg-[#54487b]"
-                            size="icon"
-                            variant="secondary"
-                            aria-label="Abrir filtros"
-                        >
-                            <SlidersHorizontal className="h-5 w-5" />
-                        </Button>
+
+                        {/* Botón de filtro (musico/estudio) */}
+                        <FilterButton value={mode} onChange={setMode} />
                     </div>
                 </div>
             </section>

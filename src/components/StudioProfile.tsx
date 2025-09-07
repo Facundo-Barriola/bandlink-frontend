@@ -7,7 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AvatarEditable } from "@/components/ui/AvatarEditable";
-import { CalendarDays, MapPin, ShieldCheck, Phone, Globe, Building2, DoorOpen } from "lucide-react";
+import { CalendarDays, MapPin, ShieldCheck, Phone, Globe, Building2, DoorOpen, BookImageIcon, CalendarPlus } from "lucide-react";
+import { ReserveRoomDialog } from "./ReserveRoomDialog";
+import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -89,16 +91,18 @@ function buildFullAddress(a?: {
 export default function StudioProfile({ viewUserId }: { viewUserId?: number }) {
   const router = useRouter();
   const { user, ready } = useUser();
+  const [reserveOpen, setReserveOpen] = useState(false);
+  const userMusician = user?.idUserGroup === 2;
 
   const params = useParams() as { idUser?: string; id?: string };
   const routeId = (params?.idUser ?? params?.id) as string | undefined;
 
   const [data, setData] = useState<Api | null>(null);
   const [loading, setLoading] = useState(true);
-   const effectiveId = viewUserId != null ? String(viewUserId) : routeId;
+  const effectiveId = viewUserId != null ? String(viewUserId) : routeId;
 
   useEffect(() => {
-    if (!effectiveId  || Number.isNaN(Number(effectiveId ))) {
+    if (!effectiveId || Number.isNaN(Number(effectiveId))) {
       setLoading(false);
       return;
     }
@@ -180,7 +184,7 @@ export default function StudioProfile({ viewUserId }: { viewUserId?: number }) {
   const lat = asNumber(userData.latitude);
   const lng = asNumber(userData.longitude);
 
-const fullAddress = buildFullAddress(userData.address);
+  const fullAddress = buildFullAddress(userData.address);
 
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
@@ -238,7 +242,7 @@ const fullAddress = buildFullAddress(userData.address);
               )}
               {studio.website && (
                 <a href={studio.website} target="_blank" className="inline-flex items-center gap-1 hover:underline">
-                  <Globe className="h-4 w-4" /> Sitio web
+                  <Globe className="h-4 w-4" /> {studio.website}
                 </a>
               )}
             </div>
@@ -249,13 +253,49 @@ const fullAddress = buildFullAddress(userData.address);
               <Button
                 className="bg-[#65558F] text-white"
                 variant="secondary"
-                onClick={() => router.push(`/studios/${userData.idUser}/edit`)}
+                onClick={() => router.push(`/studio/${userData.idUser}/edit`)}
               >
                 <DoorOpen className="mr-2 h-4 w-4" />
                 Editar Estudio
               </Button>
             </div>
           )}
+
+          {!isOwner && userMusician && (
+            <div className="flex gap-2">
+              <Button
+                className="bg-[#65558F] text-white"
+                variant="secondary"
+                onClick={() => setReserveOpen(true)}
+              >
+                <CalendarPlus />
+                Reservar Sala
+              </Button>
+
+            </div>
+          )}
+          <ReserveRoomDialog
+            open={reserveOpen}
+            onOpenChange={setReserveOpen}
+            rooms={rooms}
+            onConfirm={async ({ idRoom, startsAtIso, endsAtIso, contactNumber }) => {
+              // POST a tu backend
+              const res = await fetch(`${API_URL}/booking/rooms/${idRoom}/reserve`, {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ startsAt: startsAtIso, endsAt: endsAtIso, contactNumber }),
+              });
+              if (!res.ok) {
+                const txt = await res.text();
+                toast.error("No se pudo completar la reserva. " + txt);
+                console.error(txt);
+                return;
+              }
+              toast.success("Reserva creada con éxito.");
+              router.push(`/home/${user?.idUser}`);
+            }}
+          />
         </CardContent>
       </Card>
 
@@ -326,8 +366,8 @@ const fullAddress = buildFullAddress(userData.address);
                       {typeof value === "string"
                         ? value
                         : Array.isArray(value)
-                        ? value.join(" · ")
-                        : JSON.stringify(value)}
+                          ? value.join(" · ")
+                          : JSON.stringify(value)}
                     </span>
                   </div>
                 ))}
@@ -374,17 +414,17 @@ const fullAddress = buildFullAddress(userData.address);
                     <div className="flex flex-wrap gap-2">
                       {Array.isArray(r.equipment)
                         ? r.equipment.map((eq: any, idx: number) => (
-                            <Badge key={`eqarr-${r.idRoom}-${idx}`} variant="outline">
-                              {typeof eq === "string" ? eq : JSON.stringify(eq)}
-                            </Badge>
-                          ))
+                          <Badge key={`eqarr-${r.idRoom}-${idx}`} variant="outline">
+                            {typeof eq === "string" ? eq : JSON.stringify(eq)}
+                          </Badge>
+                        ))
                         : r.equipment && typeof r.equipment === "object"
-                        ? Object.entries(r.equipment).map(([k, v]) => (
+                          ? Object.entries(r.equipment).map(([k, v]) => (
                             <Badge key={`eqobj-${r.idRoom}-${k}`} variant="outline">
                               {k}: {typeof v === "string" ? v : JSON.stringify(v)}
                             </Badge>
                           ))
-                        : <span className="text-sm text-muted-foreground">Sin datos</span>}
+                          : <span className="text-sm text-muted-foreground">Sin datos</span>}
                     </div>
                   </div>
 
@@ -394,7 +434,7 @@ const fullAddress = buildFullAddress(userData.address);
                         size="sm"
                         variant="secondary"
                         className="bg-[#65558F] text-white"
-                        onClick={() => router.push(`/studios/${userData.idUser}/rooms/${r.idRoom}/edit`)}
+                        onClick={() => router.push(`/rooms/${r.idRoom}/edit`)}
                       >
                         Editar sala
                       </Button>

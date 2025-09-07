@@ -37,8 +37,9 @@ export default function LoginForm() {
         body: JSON.stringify({ email, password, rememberMe }),
       });
       if (!res.ok) throw new Error("Credenciales incorrectas");
-
+      
       const data = await res.json();
+      console.log("Login exitoso:", data.user.idUserGroup);
       setUser(data.user);
 
       if (rememberMe) {
@@ -46,8 +47,19 @@ export default function LoginForm() {
       } else {
         localStorage.removeItem("bandlink:rememberedEmail");
       }
+      switch (data.user.idUserGroup) {
+        case 2: //Musico
+          router.push(`/home/${data.user.idUser}`);
+        break;
+        case 3: //Estudio
+          router.push(`/home/${data.user.idUser}`);
+        break;
+        default:
+          router.push("/login");
+        break;
 
-      router.push(`/home/${data.user.idUser}`);
+      }
+
     } catch (err: any) {
       setError(err.message || "Error inesperado");
     } finally {

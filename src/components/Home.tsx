@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useUser } from "@/app/context/userContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,14 +16,66 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { BandWizard } from "@/components/BandWizard";
-
-type Booking = {
-  id: string;
-  from: string; // "15:30"
-  to: string;   // "16:30"
-  place: string;
-  address: string;
+import { PayBookingButton } from "./PayBookingButton";
+import { Console } from "console";
+const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+type ApiResponseMusician = {
+  ok: true;
+  role: "musician";
+  data: Array<{
+    idBooking: number;
+    startsAt: string;           // ISO en DB -> string
+    endsAt: string;
+    confirmationCode: string | null;
+    totalAmount: number | null;
+    phone: string | null;       // del estudio
+    displayName: string;        // del estudio
+    street: string | null;
+    streetNum: number | null;
+  }>;
 };
+
+type ApiResponseStudio = {
+  ok: true;
+  role: "studio";
+  data: Array<{
+    idBooking: number;
+    startsAt: string;
+    endsAt: string;
+    confirmationCode: string | null;
+    totalAmount: number | null;
+    contactNumber: string | null; // del músico
+    displayName: string;          // del músico
+  }>;
+};
+
+type ApiResponse = ApiResponseMusician | ApiResponseStudio;
+
+type BookingVM = {
+  idBooking: number;             // si luego lo sumás
+  from: string;            // "15:30"
+  to: string;              // "16:30"
+  place: string;           // displayName contraparte
+  address?: string | null; // para músico (estudio)
+  contactNumber?: string | null; // para estudio (músico)
+  confirmationCode?: string | null;
+  totalAmount?: number | null;
+};
+
+const primary = "bg-[#65558F] hover:bg-[#51447A] text-white";
+
+function toTimeHM(iso: string) {
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+}
+
+function moneyAR(v: number | null | undefined) {
+  if (v == null || Number.isNaN(v)) return null;
+  return v.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
+}
+
 
 type Suggestion = {
   id: string;
@@ -37,7 +90,6 @@ type Review = {
   text: string;
 };
 
-const primary = "bg-[#65558F] hover:bg-[#51447A] text-white";
 
 export default function HomePage() {
   /** Datos mock — cámbialos por fetch a tu API cuando los tengas */
@@ -50,24 +102,73 @@ export default function HomePage() {
     ],
     []
   );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [role, setRole] = useState<"musician" | "studio" | null>(null);
+  const [bookings, setBookings] = useState<BookingVM[]>([]);
+  const { user, setUser } = useUser();
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        console.log("Fetching bookings...");
+        const res = await fetch(`${API}/booking?limit=10&offset=0`, {
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+        });
+        console.log(res.body);
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+        const json: ApiResponse = await res.json();
+
+        if (!json.ok) throw new Error("Respuesta no OK");
+        if (!alive) return;
+
+        setRole(json.role);
+
+        if (json.role === "musician") {
+          const mapped = json.data.map((it) => ({
+            idBooking: it.idBooking,
+            from: toTimeHM(it.startsAt),
+            to: toTimeHM(it.endsAt),
+            place: it.displayName, // estudio
+            address:
+              it.street && it.streetNum != null ? `${it.street} ${it.streetNum}` : it.street ?? null,
+            confirmationCode: it.confirmationCode ?? null,
+            totalAmount: it.totalAmount ?? null,
+          }));
+          setBookings(mapped);
+        } else {
+          // studio
+          const mapped = json.data.map((it) => ({
+            idBooking: it.idBooking,
+            from: toTimeHM(it.startsAt),
+            to: toTimeHM(it.endsAt),
+            place: it.displayName, // músico
+            contactNumber: it.contactNumber ?? null,
+            confirmationCode: it.confirmationCode ?? null,
+            totalAmount: it.totalAmount ?? null,
+          }));
+          setBookings(mapped);
+        }
+      } catch (e: any) {
+        if (!alive) return;
+        setError(e?.message ?? "Error al cargar reservas");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const today = useMemo(() => "20/04/2025", []);
-  const bookings: Booking[] = [
-    {
-      id: "b1",
-      from: "15:30",
-      to: "16:30",
-      place: "EchoNest Studio",
-      address: "Av. Santa Fe 3333.",
-    },
-    {
-      id: "b2",
-      from: "19:15",
-      to: "20:30",
-      place: "La Sala de Tato",
-      address: "Charcas 2380.",
-    },
-  ];
+
 
   const suggestions: Suggestion[] = [
     { id: "s1", name: "Adrián Gonzalez", roles: "Bajo" },
@@ -93,7 +194,7 @@ export default function HomePage() {
         "Llegó puntual, buena comunicación y sonido impecable. 10/10.",
     },
   ];
-
+  const userGroup = user?.idUserGroup ?? null;
   const railRef = useRef<HTMLDivElement>(null);
   const scrollBy = (dir: "left" | "right") => {
     const rail = railRef.current;
@@ -101,7 +202,6 @@ export default function HomePage() {
     const delta = dir === "left" ? -rail.clientWidth : rail.clientWidth;
     rail.scrollBy({ left: delta, behavior: "smooth" });
   };
-
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-8">
       {/* KPIs */}
@@ -128,28 +228,65 @@ export default function HomePage() {
           <span>Mis próximas reservas: {today}</span>
         </div>
 
-        <div className="space-y-3">
-          {bookings.map((b) => (
-            <Card key={b.id} className="rounded-2xl bg-violet-50/60 border-violet-200">
-              <CardContent className="p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                <div className="text-sm">
-                  <div className="font-medium">
-                    De {b.from} a {b.to}
+        {loading && (
+          <div className="grid sm:grid-cols-2 gap-3">
+            {Array.from({ length: 2 }).map((_, i) => (
+              <Card key={i} className="rounded-2xl bg-violet-50/60 border-violet-200 h-full">
+                <CardContent className="p-3 min-h-[96px] animate-pulse" />
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {error && (
+          <div className="text-sm text-red-600">No pude cargar tus reservas. {error}</div>
+        )}
+
+        {!loading && !error && bookings.length === 0 && (
+          <div className="text-sm text-muted-foreground">No tenés reservas próximas.</div>
+        )}
+
+        {!loading && !error && bookings.length > 0 && (
+          <div className="grid sm:grid-cols-2 gap-3">
+            {bookings.map((b, idx) => (
+              <Card key={idx} className="rounded-2xl bg-violet-50/60 border-violet-200 h-full">
+                <CardContent className="p-3 min-h-[112px] h-full flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div className="text-sm">
+                    <div className="font-medium">
+                      De {b.from} a {b.to}
+                      {b.totalAmount != null && (
+                        <span className="ml-2 text-muted-foreground">
+                          · {moneyAR(b.totalAmount)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {b.place}
+                      {role === "musician" && b.address ? ` · ${b.address}` : ""}
+                      {role === "studio" && b.contactNumber ? ` · ${b.contactNumber}` : ""}
+                    </div>
+                    {b.confirmationCode && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        Código: <span className="font-mono">{b.confirmationCode}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-muted-foreground">
-                    {b.place} · {b.address}
+                  <div className="flex gap-2">
+                    <Button variant="outline" className="rounded-xl">
+                      Cancelar
+                    </Button>
+                    <Button className={`${primary} rounded-xl`}>Cambiar</Button>
                   </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button variant="outline" className="rounded-xl">
-                    Cancelar
-                  </Button>
-                  <Button className={`${primary} rounded-xl`}>Cambiar</Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  { userGroup === 2 && (
+                    <div className="mt-2 md:mt-0 w-full md:w-auto">
+                      <PayBookingButton idBooking={b.idBooking || 0} email={user?.email} />
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* CTA: Crear banda + Ver mapa */}
@@ -234,11 +371,10 @@ export default function HomePage() {
                     {Array.from({ length: 5 }).map((_, i) => (
                       <Star
                         key={i}
-                        className={`h-4 w-4 ${
-                          i < Math.round(r.rating)
-                            ? "fill-[#65558F] text-[#65558F]"
-                            : "text-gray-300"
-                        }`}
+                        className={`h-4 w-4 ${i < Math.round(r.rating)
+                          ? "fill-[#65558F] text-[#65558F]"
+                          : "text-gray-300"
+                          }`}
                       />
                     ))}
                   </div>
