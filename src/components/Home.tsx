@@ -17,7 +17,10 @@ import {
 } from "lucide-react";
 import { BandWizard } from "@/components/BandWizard";
 import { PayBookingButton } from "./PayBookingButton";
-import { Console } from "console";
+import FriendsDialogButton from "@/components/FriendsDialogButton";
+import CancelBookingButton from "@/components/CancelBookingButton";
+import RescheduleBookingDialog from "@/components/RescheduleBookingDialog";
+
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 type ApiResponseMusician = {
   ok: true;
@@ -26,12 +29,14 @@ type ApiResponseMusician = {
     idBooking: number;
     startsAt: string;           // ISO en DB -> string
     endsAt: string;
+    startsOn: string;
     confirmationCode: string | null;
     totalAmount: number | null;
     phone: string | null;       // del estudio
     displayName: string;        // del estudio
     street: string | null;
     streetNum: number | null;
+    paymentStatus: string | null;
   }>;
 };
 
@@ -52,7 +57,8 @@ type ApiResponseStudio = {
 type ApiResponse = ApiResponseMusician | ApiResponseStudio;
 
 type BookingVM = {
-  idBooking: number;             // si luego lo sumás
+  idBooking: number;
+  day: string;              // si luego lo sumás
   from: string;            // "15:30"
   to: string;              // "16:30"
   place: string;           // displayName contraparte
@@ -60,6 +66,7 @@ type BookingVM = {
   contactNumber?: string | null; // para estudio (músico)
   confirmationCode?: string | null;
   totalAmount?: number | null;
+  paymentStatus?: string | null;
 };
 
 const primary = "bg-[#65558F] hover:bg-[#51447A] text-white";
@@ -76,6 +83,19 @@ function moneyAR(v: number | null | undefined) {
   return v.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 2 });
 }
 
+function toDayDMY(isoOrDate: string) {
+  const d = new Date(isoOrDate);
+  return d.toLocaleDateString("es-AR"); // ej: 20/04/2025
+}
+
+function prettyPaymentStatus(s?: string | null) {
+  if (!s) return null;
+  const lower = s.toLowerCase();
+  if (["approved", "paid", "completed"].includes(lower)) return "pagado";
+  if (["pending", "in_process"].includes(lower)) return "pendiente";
+  if (["rejected", "cancelled", "voided"].includes(lower)) return "rechazado";
+  return lower; // fallback tal cual viene de BD
+}
 
 type Suggestion = {
   id: string;
@@ -92,7 +112,6 @@ type Review = {
 
 
 export default function HomePage() {
-  /** Datos mock — cámbialos por fetch a tu API cuando los tengas */
   const stats = useMemo(
     () => [
       { id: "c", label: "Conexiones activas", value: 5, Icon: Users },
@@ -107,6 +126,7 @@ export default function HomePage() {
   const [role, setRole] = useState<"musician" | "studio" | null>(null);
   const [bookings, setBookings] = useState<BookingVM[]>([]);
   const { user, setUser } = useUser();
+  const meId = user?.idUser ?? 0;
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -133,6 +153,7 @@ export default function HomePage() {
         if (json.role === "musician") {
           const mapped = json.data.map((it) => ({
             idBooking: it.idBooking,
+            day: toDayDMY(it.startsOn ?? it.startsAt),
             from: toTimeHM(it.startsAt),
             to: toTimeHM(it.endsAt),
             place: it.displayName, // estudio
@@ -140,12 +161,14 @@ export default function HomePage() {
               it.street && it.streetNum != null ? `${it.street} ${it.streetNum}` : it.street ?? null,
             confirmationCode: it.confirmationCode ?? null,
             totalAmount: it.totalAmount ?? null,
+            paymentStatus: it.paymentStatus ?? null,
           }));
           setBookings(mapped);
         } else {
           // studio
           const mapped = json.data.map((it) => ({
             idBooking: it.idBooking,
+            day: toDayDMY((it as any).startsOn ?? it.startsAt),
             from: toTimeHM(it.startsAt),
             to: toTimeHM(it.endsAt),
             place: it.displayName, // músico
@@ -221,6 +244,16 @@ export default function HomePage() {
         ))}
       </section>
 
+      <div className="flex justify-end">
+        <FriendsDialogButton
+          meId={meId}
+          apiBase={API}
+          hydrateProfiles
+          buildProfileUrl={(id) => `${API}/directory/${id}/profile`}
+          onSelectFriend={(friendId) => window.location.assign(`/profile/${friendId}`)}
+        />
+      </div>
+
       {/* Próximas reservas */}
       <section className="space-y-3">
         <div className="flex items-center gap-2 text-lg font-semibold">
@@ -247,23 +280,28 @@ export default function HomePage() {
         )}
 
         {!loading && !error && bookings.length > 0 && (
-          <div className="grid sm:grid-cols-2 gap-3">
+          <div className="grid sm:grid-cols-1 gap-2">
             {bookings.map((b, idx) => (
               <Card key={idx} className="rounded-2xl bg-violet-50/60 border-violet-200 h-full">
                 <CardContent className="p-3 min-h-[112px] h-full flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                   <div className="text-sm">
                     <div className="font-medium">
-                      De {b.from} a {b.to}
+                      {/* Día + horario */}
+                      {b.day} · De {b.from} a {b.to}
                       {b.totalAmount != null && (
-                        <span className="ml-2 text-muted-foreground">
-                          · {moneyAR(b.totalAmount)}
-                        </span>
+                        <span className="ml-2 text-muted-foreground">· {moneyAR(b.totalAmount)}</span>
                       )}
                     </div>
                     <div className="text-muted-foreground">
                       {b.place}
                       {role === "musician" && b.address ? ` · ${b.address}` : ""}
                       {role === "studio" && b.contactNumber ? ` · ${b.contactNumber}` : ""}
+                      {/* Estado de pago, si existe */}
+                      {b.paymentStatus && (
+                        <span className="ml-2 inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
+                          {prettyPaymentStatus(b.paymentStatus)}
+                        </span>
+                      )}
                     </div>
                     {b.confirmationCode && (
                       <div className="text-xs text-muted-foreground mt-1">
@@ -272,16 +310,54 @@ export default function HomePage() {
                     )}
                   </div>
                   <div className="flex gap-2">
-                    <Button variant="outline" className="rounded-xl">
-                      Cancelar
-                    </Button>
-                    <Button className={`${primary} rounded-xl`}>Cambiar</Button>
+                    {/* si es sala (3) mostramos el botón que dispara refund+cancel */}
+                    {userGroup === 3 ? (
+                      <CancelBookingButton
+                        idBooking={b.idBooking}
+                        totalAmount={b.totalAmount}
+                        onDone={() => {
+                          // optimista: sacar la reserva de la lista sin recargar
+                          setBookings(prev => prev.filter(x => x.idBooking !== b.idBooking));
+                        }}
+                      />
+                    ) : (
+                      // si es músico, dejá tu botón actual u otro flujo
+                      <Button variant="outline" className="rounded-xl">
+                        Cancelar
+                      </Button>
+                    )}
+                    {userGroup === 2 && (
+                      <RescheduleBookingDialog
+                        idBooking={b.idBooking}
+                        triggerClassName={`${primary} rounded-xl`}
+                        onDone={({ newStartsAtIso, newEndsAtIso }) => {
+                          // Actualizá la card localmente (HH:mm)
+                          const toHM = (isoLocal: string) => {
+                            const d = new Date(isoLocal);
+                            const hh = String(d.getHours()).padStart(2, "0");
+                            const mm = String(d.getMinutes()).padStart(2, "0");
+                            return `${hh}:${mm}`;
+                          };
+                          setBookings(prev =>
+                            prev.map(x =>
+                              x.idBooking === b.idBooking
+                                ? { ...x, from: toHM(newStartsAtIso), to: toHM(newEndsAtIso) }
+                                : x
+                            )
+                          );
+                        }}
+                      />
+                    )}
+                    <Button
+                      className={`${primary} rounded-xl`}
+                      onClick={() => window.open(`${API}/receipts/bookings/${b.idBooking}/receipt.pdf`, "_blank")}>Descargar Comprobante</Button>
+                    {userGroup === 2 && (
+                      <div className="mt-2 md:mt-0 w-full md:w-auto">
+                        <PayBookingButton idBooking={b.idBooking || 0} email={user?.email} />
+                      </div>
+                    )}
                   </div>
-                  { userGroup === 2 && (
-                    <div className="mt-2 md:mt-0 w-full md:w-auto">
-                      <PayBookingButton idBooking={b.idBooking || 0} email={user?.email} />
-                    </div>
-                  )}
+
                 </CardContent>
               </Card>
             ))}
@@ -318,7 +394,7 @@ export default function HomePage() {
                 Explora el mapa y conéctate con personas y espacios cercanos.
               </p>
             </div>
-            <Button className="rounded-xl" variant="outline" onClick={() => location.href = "/mapa"}>
+            <Button className="rounded-xl" variant="outline" onClick={() => location.href = "/map"}>
               <MapPin className="mr-2 h-4 w-4 text-[#65558F]" />
               Ver mapa
             </Button>
