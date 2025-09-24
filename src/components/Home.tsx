@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@/app/context/userContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Users,
   Send,
@@ -11,29 +12,34 @@ import {
   Music2,
   CalendarDays,
   MapPin,
-  PlusCircle,
   ChevronLeft,
   ChevronRight,
+  Clock,
+  ReceiptText,
+  XCircle,
+  CalendarClock,
 } from "lucide-react";
 import { BandWizard } from "@/components/BandWizard";
 import { PayBookingButton } from "./PayBookingButton";
 import FriendsDialogButton from "@/components/FriendsDialogButton";
 import CancelBookingButton from "@/components/CancelBookingButton";
 import RescheduleBookingDialog from "@/components/RescheduleBookingDialog";
+import EventWizard from "./EventWizard";
 
 const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+
 type ApiResponseMusician = {
   ok: true;
   role: "musician";
   data: Array<{
     idBooking: number;
-    startsAt: string;           // ISO en DB -> string
+    startsAt: string;
     endsAt: string;
     startsOn: string;
     confirmationCode: string | null;
     totalAmount: number | null;
-    phone: string | null;       // del estudio
-    displayName: string;        // del estudio
+    phone: string | null;
+    displayName: string;
     street: string | null;
     streetNum: number | null;
     paymentStatus: string | null;
@@ -49,8 +55,8 @@ type ApiResponseStudio = {
     endsAt: string;
     confirmationCode: string | null;
     totalAmount: number | null;
-    contactNumber: string | null; // del músico
-    displayName: string;          // del músico
+    contactNumber: string | null;
+    displayName: string;
   }>;
 };
 
@@ -58,12 +64,12 @@ type ApiResponse = ApiResponseMusician | ApiResponseStudio;
 
 type BookingVM = {
   idBooking: number;
-  day: string;              // si luego lo sumás
-  from: string;            // "15:30"
-  to: string;              // "16:30"
-  place: string;           // displayName contraparte
-  address?: string | null; // para músico (estudio)
-  contactNumber?: string | null; // para estudio (músico)
+  day: string;
+  from: string;
+  to: string;
+  place: string;
+  address?: string | null;
+  contactNumber?: string | null;
   confirmationCode?: string | null;
   totalAmount?: number | null;
   paymentStatus?: string | null;
@@ -85,7 +91,7 @@ function moneyAR(v: number | null | undefined) {
 
 function toDayDMY(isoOrDate: string) {
   const d = new Date(isoOrDate);
-  return d.toLocaleDateString("es-AR"); // ej: 20/04/2025
+  return d.toLocaleDateString("es-AR");
 }
 
 function prettyPaymentStatus(s?: string | null) {
@@ -94,22 +100,33 @@ function prettyPaymentStatus(s?: string | null) {
   if (["approved", "paid", "completed"].includes(lower)) return "pagado";
   if (["pending", "in_process"].includes(lower)) return "pendiente";
   if (["rejected", "cancelled", "voided"].includes(lower)) return "rechazado";
-  return lower; // fallback tal cual viene de BD
+  return lower;
 }
 
-type Suggestion = {
-  id: string;
-  name: string;
-  roles: string; // "Bajo" / "Funk, Disco" / etc
-};
+function isPaidStatus(s?: string | null) {
+  if (!s) return false;
+  const lower = s.toLowerCase();
+  return ["approved", "paid", "completed"].includes(lower);
+}
 
-type Review = {
-  id: string;
-  author: string;
-  rating: number; // 0..5
-  text: string;
-};
+type Suggestion = { id: string; name: string; roles: string };
 
+type Review = { id: string; author: string; rating: number; text: string };
+
+function PaymentStatusBadge({ status }: { status?: string | null }) {
+  if (!status) return null;
+  const txt = prettyPaymentStatus(status);
+  const lower = status.toLowerCase();
+  const cls =
+    ["approved", "paid", "completed"].includes(lower)
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : ["pending", "in_process"].includes(lower)
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : "bg-rose-50 text-rose-700 border-rose-200";
+  return (
+    <Badge className={`rounded-full border ${cls}`}>{txt}</Badge>
+  );
+}
 
 export default function HomePage() {
   const stats = useMemo(
@@ -125,53 +142,46 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [role, setRole] = useState<"musician" | "studio" | null>(null);
   const [bookings, setBookings] = useState<BookingVM[]>([]);
-  const { user, setUser } = useUser();
+  const { user } = useUser();
   const meId = user?.idUser ?? 0;
+
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
         setLoading(true);
         setError(null);
-        console.log("Fetching bookings...");
         const res = await fetch(`${API}/booking?limit=10&offset=0`, {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           cache: "no-store",
         });
-        console.log(res.body);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json: ApiResponse = await res.json();
-
         if (!json.ok) throw new Error("Respuesta no OK");
         if (!alive) return;
 
         setRole(json.role);
-
         if (json.role === "musician") {
           const mapped = json.data.map((it) => ({
             idBooking: it.idBooking,
             day: toDayDMY(it.startsOn ?? it.startsAt),
             from: toTimeHM(it.startsAt),
             to: toTimeHM(it.endsAt),
-            place: it.displayName, // estudio
-            address:
-              it.street && it.streetNum != null ? `${it.street} ${it.streetNum}` : it.street ?? null,
+            place: it.displayName,
+            address: it.street && it.streetNum != null ? `${it.street} ${it.streetNum}` : it.street ?? null,
             confirmationCode: it.confirmationCode ?? null,
             totalAmount: it.totalAmount ?? null,
             paymentStatus: it.paymentStatus ?? null,
           }));
           setBookings(mapped);
         } else {
-          // studio
           const mapped = json.data.map((it) => ({
             idBooking: it.idBooking,
             day: toDayDMY((it as any).startsOn ?? it.startsAt),
             from: toTimeHM(it.startsAt),
             to: toTimeHM(it.endsAt),
-            place: it.displayName, // músico
+            place: it.displayName,
             contactNumber: it.contactNumber ?? null,
             confirmationCode: it.confirmationCode ?? null,
             totalAmount: it.totalAmount ?? null,
@@ -190,9 +200,7 @@ export default function HomePage() {
     };
   }, []);
 
-  const today = useMemo(() => "20/04/2025", []);
-
-
+  const today = useMemo(() => new Date().toLocaleDateString("es-AR"), []);
   const suggestions: Suggestion[] = [
     { id: "s1", name: "Adrián Gonzalez", roles: "Bajo" },
     { id: "s2", name: "Worm Hole", roles: "Funk, Disco" },
@@ -200,24 +208,13 @@ export default function HomePage() {
     { id: "s4", name: "Adrián Gomez", roles: "Guitarra, Batería, Voz" },
     { id: "s5", name: "Trío Modular", roles: "Indie, Pop" },
   ];
-
   const reviews: Review[] = [
-    {
-      id: "r1",
-      author: "Luis María",
-      rating: 4,
-      text:
-        "Excelente predisposición para ensayar y muy profesional. Volvería a tocar con él/ella.",
-    },
-    {
-      id: "r2",
-      author: "Marcos Marcos",
-      rating: 5,
-      text:
-        "Llegó puntual, buena comunicación y sonido impecable. 10/10.",
-    },
+    { id: "r1", author: "Luis María", rating: 4, text: "Excelente predisposición para ensayar y muy profesional. Volvería a tocar con él/ella." },
+    { id: "r2", author: "Marcos Marcos", rating: 5, text: "Llegó puntual, buena comunicación y sonido impecable. 10/10." },
   ];
-  const userGroup = user?.idUserGroup ?? null;
+  const userGroup = user?.idUserGroup ?? null; // 2 músico, 3 sala
+  const canReschedule = userGroup === 2 || userGroup === 3;
+
   const railRef = useRef<HTMLDivElement>(null);
   const scrollBy = (dir: "left" | "right") => {
     const rail = railRef.current;
@@ -225,12 +222,13 @@ export default function HomePage() {
     const delta = dir === "left" ? -rail.clientWidth : rail.clientWidth;
     rail.scrollBy({ left: delta, behavior: "smooth" });
   };
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-8">
       {/* KPIs */}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map(({ id, label, value, Icon }) => (
-          <Card key={id} className="rounded-2xl border-violet-200">
+          <Card key={id} className="rounded-2xl border-violet-200 shadow-sm hover:shadow-md transition">
             <CardContent className="p-4 flex items-center gap-4">
               <div className="h-12 w-12 rounded-xl bg-violet-100 flex items-center justify-center">
                 <Icon className="h-6 w-6 text-[#65558F]" />
@@ -244,7 +242,8 @@ export default function HomePage() {
         ))}
       </section>
 
-      <div className="flex justify-end">
+      {/* Acciones rápidas */}
+      <div className="flex flex-wrap justify-end gap-2">
         <FriendsDialogButton
           meId={meId}
           apiBase={API}
@@ -252,6 +251,7 @@ export default function HomePage() {
           buildProfileUrl={(id) => `${API}/directory/${id}/profile`}
           onSelectFriend={(friendId) => window.location.assign(`/profile/${friendId}`)}
         />
+        <EventWizard onCreated={() => {}} trigger={<Button className="rounded-2xl">Nuevo evento</Button>} />
       </div>
 
       {/* Próximas reservas */}
@@ -271,37 +271,31 @@ export default function HomePage() {
           </div>
         )}
 
-        {error && (
-          <div className="text-sm text-red-600">No pude cargar tus reservas. {error}</div>
-        )}
+        {error && <div className="text-sm text-red-600">No pude cargar tus reservas. {error}</div>}
 
         {!loading && !error && bookings.length === 0 && (
           <div className="text-sm text-muted-foreground">No tenés reservas próximas.</div>
         )}
 
         {!loading && !error && bookings.length > 0 && (
-          <div className="grid sm:grid-cols-1 gap-2">
-            {bookings.map((b, idx) => (
-              <Card key={idx} className="rounded-2xl bg-violet-50/60 border-violet-200 h-full">
-                <CardContent className="p-3 min-h-[112px] h-full flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                  <div className="text-sm">
-                    <div className="font-medium">
-                      {/* Día + horario */}
-                      {b.day} · De {b.from} a {b.to}
+          <div className="grid sm:grid-cols-1 gap-3">
+            {bookings.map((b) => (
+              <Card key={b.idBooking} className="rounded-2xl border-violet-200 shadow-sm hover:shadow-md transition">
+                <CardContent className="p-4 min-h-[112px] h-full flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                  <div className="text-sm space-y-1">
+                    <div className="font-medium flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1"><Clock className="h-4 w-4" />{b.day}</span>
+                      <span>·</span>
+                      <span>De {b.from} a {b.to}</span>
                       {b.totalAmount != null && (
-                        <span className="ml-2 text-muted-foreground">· {moneyAR(b.totalAmount)}</span>
+                        <span className="text-muted-foreground">· {moneyAR(b.totalAmount)}</span>
                       )}
                     </div>
                     <div className="text-muted-foreground">
                       {b.place}
                       {role === "musician" && b.address ? ` · ${b.address}` : ""}
                       {role === "studio" && b.contactNumber ? ` · ${b.contactNumber}` : ""}
-                      {/* Estado de pago, si existe */}
-                      {b.paymentStatus && (
-                        <span className="ml-2 inline-flex items-center rounded-full border px-2 py-0.5 text-xs">
-                          {prettyPaymentStatus(b.paymentStatus)}
-                        </span>
-                      )}
+                      <span className="ml-2 align-middle"><PaymentStatusBadge status={b.paymentStatus} /></span>
                     </div>
                     {b.confirmationCode && (
                       <div className="text-xs text-muted-foreground mt-1">
@@ -309,37 +303,22 @@ export default function HomePage() {
                       </div>
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    {/* si es sala (3) mostramos el botón que dispara refund+cancel */}
-                    {userGroup === 3 ? (
-                      <CancelBookingButton
-                        idBooking={b.idBooking}
-                        totalAmount={b.totalAmount}
-                        onDone={() => {
-                          // optimista: sacar la reserva de la lista sin recargar
-                          setBookings(prev => prev.filter(x => x.idBooking !== b.idBooking));
-                        }}
-                      />
-                    ) : (
-                      // si es músico, dejá tu botón actual u otro flujo
-                      <Button variant="outline" className="rounded-xl">
-                        Cancelar
-                      </Button>
-                    )}
-                    {userGroup === 2 && (
+
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {/* Editar (músicos y salas) */}
+                    {canReschedule && (
                       <RescheduleBookingDialog
                         idBooking={b.idBooking}
-                        triggerClassName={`${primary} rounded-xl`}
+                        triggerClassName="rounded-xl border border-violet-200 bg-white text-[#65558F] hover:bg-violet-50 hover:text-[#65558F]"
                         onDone={({ newStartsAtIso, newEndsAtIso }) => {
-                          // Actualizá la card localmente (HH:mm)
                           const toHM = (isoLocal: string) => {
                             const d = new Date(isoLocal);
                             const hh = String(d.getHours()).padStart(2, "0");
                             const mm = String(d.getMinutes()).padStart(2, "0");
                             return `${hh}:${mm}`;
                           };
-                          setBookings(prev =>
-                            prev.map(x =>
+                          setBookings((prev) =>
+                            prev.map((x) =>
                               x.idBooking === b.idBooking
                                 ? { ...x, from: toHM(newStartsAtIso), to: toHM(newEndsAtIso) }
                                 : x
@@ -348,16 +327,38 @@ export default function HomePage() {
                         }}
                       />
                     )}
+
+                    {/* Cancelar */}
+                    {userGroup === 3 ? (
+                      <CancelBookingButton
+                        idBooking={b.idBooking}
+                        totalAmount={b.totalAmount}
+                        onDone={() => setBookings((prev) => prev.filter((x) => x.idBooking !== b.idBooking))}
+                      />
+                    ) : (
+                      <Button variant="destructive" className="rounded-xl"><XCircle className="mr-2 h-4 w-4" />Cancelar</Button>
+                    )}
+
+                    {/* Comprobante */}
                     <Button
                       className={`${primary} rounded-xl`}
-                      onClick={() => window.open(`${API}/receipts/bookings/${b.idBooking}/receipt.pdf`, "_blank")}>Descargar Comprobante</Button>
+                      onClick={() => window.open(`${API}/receipts/bookings/${b.idBooking}/receipt.pdf`, "_blank")}
+                    >
+                      <ReceiptText className="mr-2 h-4 w-4" /> Comprobante
+                    </Button>
+
+                    {/* Pagar (solo músico) */}
                     {userGroup === 2 && (
                       <div className="mt-2 md:mt-0 w-full md:w-auto">
                         <PayBookingButton idBooking={b.idBooking || 0} email={user?.email} />
                       </div>
                     )}
-                  </div>
 
+                    {/* Aviso si está pagada (opcional) */}
+                    {isPaidStatus(b.paymentStatus) && (
+                      <span className="text-xs text-muted-foreground ml-2">Esta reserva puede no permitir cambios</span>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             ))}
@@ -367,13 +368,11 @@ export default function HomePage() {
 
       {/* CTA: Crear banda + Ver mapa */}
       <section className="grid md:grid-cols-2 gap-4">
-        <Card className="rounded-2xl border-violet-200">
+        <Card className="rounded-2xl border-violet-200 shadow-sm hover:shadow-md transition">
           <CardContent className="p-5 flex items-center justify-between gap-4">
             <div>
               <div className="text-lg font-semibold text-[#65558F]">Crea tu banda</div>
-              <p className="text-sm text-muted-foreground">
-                Agrupa músicos, administra roles y agenda ensayos en un solo lugar.
-              </p>
+              <p className="text-sm text-muted-foreground">Agrupa músicos, administra roles y agenda ensayos en un solo lugar.</p>
             </div>
             <BandWizard
               triggerLabel="Crear banda"
@@ -384,19 +383,14 @@ export default function HomePage() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl border-violet-200">
+        <Card className="rounded-2xl border-violet-200 shadow-sm hover:shadow-md transition">
           <CardContent className="p-5 flex items-center justify-between gap-4">
             <div>
-              <div className="text-lg font-semibold text-[#65558F]">
-                Músicos y salas cerca de ti
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Explora el mapa y conéctate con personas y espacios cercanos.
-              </p>
+              <div className="text-lg font-semibold text-[#65558F]">Músicos y salas cerca de ti</div>
+              <p className="text-sm text-muted-foreground">Explora el mapa y conéctate con personas y espacios cercanos.</p>
             </div>
-            <Button className="rounded-xl" variant="outline" onClick={() => location.href = "/map"}>
-              <MapPin className="mr-2 h-4 w-4 text-[#65558F]" />
-              Ver mapa
+            <Button className="rounded-xl" variant="outline" onClick={() => (location.href = "/map")}>
+              <MapPin className="mr-2 h-4 w-4 text-[#65558F]" /> Ver mapa
             </Button>
           </CardContent>
         </Card>
@@ -421,9 +415,9 @@ export default function HomePage() {
           className="flex gap-4 overflow-x-auto scroll-smooth pb-2 pr-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {suggestions.map((s) => (
-            <Card key={s.id} className="min-w-[210px] rounded-2xl border-violet-200">
+            <Card key={s.id} className="min-w-[210px] rounded-2xl border-violet-200 shadow-sm hover:shadow-md transition">
               <CardContent className="p-4 flex flex-col items-center text-center gap-3">
-                <div className="h-20 w-20 rounded-full bg-violet-200" />
+                <div className="h-20 w-20 rounded-full bg-gradient-to-br from-violet-200 to-fuchsia-200" />
                 <div className="font-medium">{s.name}</div>
                 <div className="text-xs text-muted-foreground">{s.roles}</div>
                 <Button className={`${primary} rounded-xl w-full`}>Ver perfil</Button>
@@ -438,19 +432,16 @@ export default function HomePage() {
         <h3 className="text-lg font-semibold">Reseñas</h3>
         <div className="grid md:grid-cols-2 gap-4">
           {reviews.map((r) => (
-            <Card key={r.id} className="rounded-2xl border-violet-200">
+            <Card key={r.id} className="rounded-2xl border-violet-200 shadow-sm hover:shadow-md transition">
               <CardContent className="p-4 flex gap-3 items-start">
-                <div className="h-12 w-12 rounded-full bg-violet-200 shrink-0" />
+                <div className="h-12 w-12 rounded-full bg-gradient-to-br from-violet-200 to-fuchsia-200 shrink-0" />
                 <div className="space-y-1">
                   <div className="font-medium">{r.author}</div>
                   <div className="flex items-center gap-1">
                     {Array.from({ length: 5 }).map((_, i) => (
                       <Star
                         key={i}
-                        className={`h-4 w-4 ${i < Math.round(r.rating)
-                          ? "fill-[#65558F] text-[#65558F]"
-                          : "text-gray-300"
-                          }`}
+                        className={`h-4 w-4 ${i < Math.round(r.rating) ? "fill-[#65558F] text-[#65558F]" : "text-gray-300"}`}
                       />
                     ))}
                   </div>

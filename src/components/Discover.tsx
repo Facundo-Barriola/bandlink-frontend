@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { useStudioSearch } from "@/hooks/useStudioSearch";
 import { useMusicianSearch } from "@/hooks/useMusicianSearch";
+import { useDiscoverEvents } from "@/hooks/useDiscoverEvents";
+import {useEventSearch } from "@/hooks/useEventSearch";
 import React from "react";
 import { FilterButton } from "./ui/FilterButton";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -26,15 +28,42 @@ export default function Discover() {
     const router = useRouter();
     const { term, setTerm, results, loading } = useMusicianSearch();
     const { termStudio, setTermStudio, resultsStudio, loadingStudio } = useStudioSearch();
+    const { termEvents, setTermEvents, resultsSearchEvents, loadingSearchEvents } = useEventSearch();
 
-    const [mode, setMode] = useState<"musico" | "estudio">("musico");
-    const activeTerm = mode === "musico" ? term : termStudio;
-    const isLoading = mode === "musico" ? loading : loadingStudio;
-    const suggestions =
-        mode === "musico"
-            ? results.map(m => ({ idUser: m.idUser, displayName: m.displayName }))
-            : resultsStudio.map(s => ({ idUser: s.idUser, displayName: s.displayName }));
-    // Dummy data SOLO para layout (luego se reemplaza con componentes/queries reales)
+    const [mode, setMode] = useState<"musico" | "estudio" | "evento">("musico");
+    const activeTerm =     mode === "musico" ? term : mode === "estudio" ? termStudio : termEvents;
+    const isLoading = mode === "musico" ? loading : mode === "estudio" ? loadingStudio : loadingSearchEvents;
+  const suggestions = (
+    mode === "musico"
+      ? results.map(m => ({
+          key: `m-${m.idUser}`,
+          label: m.displayName,
+          onClick: () => {
+            router.push(`/profile/${m.idUser}`);
+            setTerm(""); 
+          },
+        }))
+      : mode === "estudio"
+      ? resultsStudio.map(s => ({
+          key: `s-${s.idUser}`,
+          label: s.displayName,
+          onClick: () => {
+            router.push(`/profile/${s.idUser}`);
+            setTermStudio(""); 
+          },
+        }))
+      : resultsSearchEvents.map(e => ({
+          key: `e-${e.idEvent}`,
+          label: e.name,
+          onClick: () => {
+            router.push(`/events/${e.idEvent}`);
+            setTermEvents(""); // limpiar
+          },
+        }))
+  );
+
+    const { items: events, loading: loadingEvents, error: errorEvents } = useDiscoverEvents({ limit: 8, days: 60 });
+
     const trending = Array.from({ length: 6 }).map((_, i) => ({
         id: i + 1,
         name: "Band Name",
@@ -42,12 +71,6 @@ export default function Discover() {
         genres: ["Rock", "Metal"],
     }));
 
-    const nearbyEvents = Array.from({ length: 4 }).map((_, i) => ({
-        id: i + 1,
-        title: `Evento ${i + 1}`,
-        when: "Sáb 14 de junio, 20:00",
-        where: "Centro de Arte",
-    }));
 
     const studios = Array.from({ length: 4 }).map((_, i) => ({
         id: i + 1,
@@ -60,6 +83,14 @@ export default function Discover() {
         name: i % 2 ? "Adrián González" : "Micaela Solís",
         instruments: i % 2 ? ["Bajo"] : ["Saxo", "Trompeta"],
     }));
+
+    function toDayHM(iso: string) {
+        const d = new Date(iso);
+        const dd = d.toLocaleDateString("es-AR");
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mm = String(d.getMinutes()).padStart(2, "0");
+        return `${dd} ${hh}:${mm}`;
+    }
 
     return (
         <div className="max-w-6xl mx-auto p-6 space-y-8">
@@ -74,10 +105,16 @@ export default function Discover() {
                             value={activeTerm}
                             onChange={(e) => {
                                 const v = e.target.value;
-                                if (mode === "musico") {
-                                    setTerm(v);
-                                } else {
-                                    setTermStudio(v);
+                                switch (mode){
+                                    case "musico":
+                                        setTerm(v);
+                                        break;
+                                    case "estudio":
+                                        setTermStudio(v);
+                                        break;
+                                    case "evento":
+                                        setTermEvents(v);
+                                        break;
                                 }
                             }}
                             placeholder={
@@ -100,26 +137,21 @@ export default function Discover() {
                                 )}
 
                                 {!isLoading &&
-                                    suggestions.map((r) => (
+                                    suggestions.map((item) => (
                                         <button
-                                            key={r.idUser}
+                                            key={item.key}
                                             type="button"
                                             onMouseDown={(e) => {
                                                 e.preventDefault();
-                                                router.push(`/profile/${r.idUser}`);
-                                                // limpiar campo del hook activo (opcional)
-                                                if (mode === "musico") setTerm("");
-                                                else setTermStudio("");
+                                                item.onClick();
                                             }}
                                             className="w-full text-left px-3 py-2 rounded-xl hover:bg-muted/60 flex items-center gap-3"
                                         >
                                             <div className="h-9 w-9 rounded-full bg-gradient-to-br from-purple-200 to-[#65558F]" />
                                             <div className="min-w-0">
-                                                {/* Para estudio: se ve el nombre del estudio (displayName) */}
                                                 <div className="font-medium text-[#65558F] truncate">
-                                                    {r.displayName}
+                                                    {item.label}
                                                 </div>
-                                                {/* Mantengo simple: sin subtítulo extra para estudios */}
                                             </div>
                                         </button>
                                     ))}
@@ -159,35 +191,71 @@ export default function Discover() {
             </section>
 
             {/* Eventos cercanos */}
+            {/* Eventos cercanos (reales) */}
             <section className="space-y-3">
                 <SectionHeader
                     title="Eventos cercanos"
                     action={
-                        <button
-                            className="text-sm text-[#65558F] hover:underline"
-                            onClick={() => router.push("/map")}
-                        >
+                        <button className="text-sm text-[#65558F] hover:underline" onClick={() => router.push("/map")}>
                             Ver mapa
                         </button>
                     }
                 />
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {nearbyEvents.map((e) => (
-                        <Card key={e.id} className="rounded-2xl overflow-hidden">
-                            <div className="h-40 bg-gradient-to-br from-neutral-800 to-neutral-600" />
-                            <CardContent className="p-4">
-                                <h3 className="font-medium text-[#65558F]">{e.title}</h3>
-                                <div className="mt-1 flex flex-wrap gap-3 text-sm text-muted-foreground">
-                                    <span className="inline-flex items-center gap-1"><CalendarDays className="h-4 w-4" /> {e.when}</span>
-                                    <span className="inline-flex items-center gap-1"><MapPin className="h-4 w-4" /> {e.where}</span>
-                                </div>
-                                <div className="mt-3">
-                                    <Button onClick={() => router.push(`/events/${e.id}`)}>Ver evento</Button>
-                                </div>
-                            </CardContent>
-                        </Card>
-                    ))}
-                </div>
+
+                {loadingEvents && <div className="text-sm text-muted-foreground">Cargando eventos…</div>}
+                {errorEvents && <div className="text-sm text-destructive">{errorEvents}</div>}
+
+                {!loadingEvents && events.length === 0 && (
+                    <div className="text-sm text-muted-foreground">No hay recomendaciones por ahora.</div>
+                )}
+
+                {!loadingEvents && events.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {events.map((e) => (
+                            <Card key={e.idEvent} className="rounded-2xl overflow-hidden">
+                                <div className="h-40 bg-gradient-to-br from-neutral-800 to-neutral-600" />
+                                <CardContent className="p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <h3 className="font-medium text-[#65558F]">{e.name}</h3>
+                                        <Badge variant={e.visibility === "private" ? "secondary" : "default"}>
+                                            {e.visibility === "private" ? "Privado" : "Público"}
+                                        </Badge>
+                                    </div>
+
+                                    <div className="mt-1 flex flex-wrap gap-3 text-sm text-muted-foreground">
+                                        <span className="inline-flex items-center gap-1">
+                                            <CalendarDays className="h-4 w-4" /> {toDayHM(e.startsAt)}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1">
+                                            <MapPin className="h-4 w-4" />
+                                            {e.dist_km != null ? `${e.dist_km.toFixed(1)} km` : "En tu zona"}
+                                        </span>
+                                    </div>
+
+                                    {e.description && (
+                                        <p className="mt-2 text-sm text-muted-foreground line-clamp-2">{e.description}</p>
+                                    )}
+
+                                    <div className="mt-3 flex items-center gap-2">
+                                        <Badge variant="secondary" title="Afinidad por géneros">
+                                            🎧 {(e.genre_score * 100).toFixed(0)}%
+                                        </Badge>
+                                        <Badge variant="secondary" title="Proximidad">
+                                            📍 {(e.proximity_score * 100).toFixed(0)}%
+                                        </Badge>
+                                        <Badge variant="secondary" title="Popularidad">
+                                            ⭐ {(e.popularity_score * 100).toFixed(0)}%
+                                        </Badge>
+                                    </div>
+
+                                    <div className="mt-3">
+                                        <Button onClick={() => router.push(`/events/${e.idEvent}`)}>Ver evento</Button>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        ))}
+                    </div>
+                )}
             </section>
 
             {/* Salas de ensayo */}

@@ -5,8 +5,8 @@ import { Label } from "@/components/ui/label"
 import { SlidersHorizontal } from "lucide-react"
 
 type Props = {
-  value: "musico" | "estudio";
-  onChange: (v: "musico" | "estudio") => void;
+  value: "musico" | "estudio" | "evento";
+  onChange: (v: "musico" | "estudio" | "evento") => void;
 };
 export function FilterButton({ value, onChange }: Props) {
   return (
@@ -31,6 +31,10 @@ export function FilterButton({ value, onChange }: Props) {
           <div className="flex items-center space-x-2">
             <RadioGroupItem value="estudio" id="estudio" />
             <Label htmlFor="estudio">Estudio</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="evento" id="evento" />
+            <Label htmlFor="evento">Eventos</Label>
           </div>
         </RadioGroup>
       </PopoverContent>

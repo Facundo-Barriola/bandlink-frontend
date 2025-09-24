@@ -2,6 +2,7 @@
 
 import { FC } from "react";
 import Image, { StaticImageData } from "next/image";
+import { useRouter } from "next/navigation";
 
 interface PillItem {
   label: string;
@@ -21,6 +22,8 @@ interface PillNavProps {
   pillColor?: string;
   hoveredPillTextColor?: string;
   pillTextColor?: string;
+  homeHref?: string;
+  onLogoClick?: () => void;
 }
 
 const PillNav: FC<PillNavProps> = ({
@@ -33,17 +36,40 @@ const PillNav: FC<PillNavProps> = ({
   pillColor = "#65558F",
   hoveredPillTextColor = "#EADDFF",
   pillTextColor = "#49454F",
+  homeHref,
+  onLogoClick
 }) => {
+  const router = useRouter();
+
+  const goHome = () => {
+    if (onLogoClick) {
+      onLogoClick();
+      return;
+    }
+    if (homeHref) {
+      router.push(homeHref);
+      return;
+    }
+    // fallback por si no te pasan nada
+    router.push("/home");
+  };
   return (
     <nav
       className={`w-screen flex items-center justify-between px-6 py-3 ${className}`}
       style={{ backgroundColor: baseColor, height: "60px" }}
     >
       {/* Logo + Nombre app */}
-      <div className="flex items-center flex-shrink-0">
+      <button
+        type="button"
+        onClick={goHome}
+        className="flex items-center flex-shrink-0 gap-2 cursor-pointer select-none focus:outline-none"
+        aria-label="Ir al inicio"
+      >
         <Image src={logo} alt={logoAlt} className="h-20 w-auto" />
-        <span className="text-xl font-bold" style={{ color: "#65558F" }}>BandLink</span>
-      </div>
+        <span className="text-xl font-bold" style={{ color: "#65558F" }}>
+          BandLink
+        </span>
+      </button>
 
       {/* Nav Items */}
       <div className="flex-1 flex justify-center gap-4">

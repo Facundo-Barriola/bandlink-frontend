@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useUser } from "@/app/context/userContext";
 import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
-
+// --------- Tipos ----------
 export type POIType = "musician" | "studio" | "event";
 type Coord = { lat: number; lon: number };
 export type POI = { id: string | number; type: POIType; name: string; location: Coord };
+type LiveUser = { idUser: number; displayName?: string; lat: number; lon: number; updatedAt: number };
 
-// --- util distancia
+// --------- Utils ----------
 function haversineKm(a: Coord, b: Coord) {
   const R = 6371;
   const dLat = (b.lat - a.lat) * Math.PI / 180;
@@ -19,11 +22,10 @@ function haversineKm(a: Coord, b: Coord) {
   const s2 = Math.sin(dLon / 2);
   const c1 = Math.cos(a.lat * Math.PI / 180);
   const c2 = Math.cos(b.lat * Math.PI / 180);
-  const aVal = s1 * s1 + c1 * c2 * s2 * s2;
-  return 2 * R * Math.asin(Math.sqrt(aVal));
+  const v = s1 * s1 + c1 * c2 * s2 * s2;
+  return 2 * R * Math.asin(Math.sqrt(v));
 }
 
-// --- convertir POIs a GeoJSON
 function toGeoJSON(features: POI[]) {
   return {
     type: "FeatureCollection",
@@ -35,13 +37,11 @@ function toGeoJSON(features: POI[]) {
   } as GeoJSON.FeatureCollection;
 }
 
-// --- círculo (polígono) en torno a lon/lat
 function circlePolygon(lon: number, lat: number, radiusMeters: number, steps = 64) {
   const coords: [number, number][] = [];
   const d = radiusMeters / 1000 / 6371; // rad
   const latR = (lat * Math.PI) / 180;
   const lonR = (lon * Math.PI) / 180;
-
   for (let i = 0; i <= steps; i++) {
     const brng = (i * 2 * Math.PI) / steps;
     const lat2 = Math.asin(Math.sin(latR) * Math.cos(d) + Math.cos(latR) * Math.sin(d) * Math.cos(brng));
@@ -53,7 +53,6 @@ function circlePolygon(lon: number, lat: number, radiusMeters: number, steps = 6
       );
     coords.push([(lon2 * 180) / Math.PI, (lat2 * 180) / Math.PI]);
   }
-
   return {
     type: "Feature",
     geometry: { type: "Polygon", coordinates: [coords] },
@@ -61,64 +60,87 @@ function circlePolygon(lon: number, lat: number, radiusMeters: number, steps = 6
   } as GeoJSON.Feature;
 }
 
-
-
+// ========= Componente =========
 export default function Map({
-    allPois,
-    initialRadiusKm = 5,
+  allPois,
+  initialRadiusKm = 5,
 }: {
-    allPois: POI[];
-    initialRadiusKm?: number;
+  allPois: POI[];
+  initialRadiusKm?: number;
 }) {
-    const mapContainerRef = useRef<HTMLDivElement | null>(null);
-    const mapRef = useRef<mapboxgl.Map | null>(null);
-      const [userPos, setUserPos] = useState<Coord | null>(null);
+  const { user, ready } = useUser();
+
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const initialized = useRef(false);
+
+  // Estado UI
   const [radiusKm, setRadiusKm] = useState(initialRadiusKm);
   const [showMusicians, setShowMusicians] = useState(true);
   const [showStudios, setShowStudios] = useState(true);
   const [showEvents, setShowEvents] = useState(true);
+  const [shareLive, setShareLive] = useState(false);
 
+  // Estado data
+  const [userPos, setUserPos] = useState<(Coord & { accuracy?: number }) | null>(null);
+  const [liveUsers, setLiveUsers] = useState<LiveUser[]>([]);
+
+  const API = useMemo(() => process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000", []);
+
+  // ----- Geolocalización: mejor muestra (~5s) -----
   useEffect(() => {
     if (!("geolocation" in navigator)) {
-      setUserPos({ lat: -34.6037, lon: -58.3816 });
+      setUserPos({ lat: -34.6037, lon: -58.3816, accuracy: 500 });
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setUserPos({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
-      () => setUserPos({ lat: -34.6037, lon: -58.3816 }),
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 }
+    let watchId: number | null = null;
+    let best: GeolocationPosition | null = null;
+    const start = Date.now();
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        if (!best || accuracy < best.coords.accuracy) best = pos;
+        const ageMs = Date.now() - start;
+        const chosen = ageMs < 5000 && best ? best : pos; // 5s para estabilizar
+        setUserPos({
+          lat: chosen.coords.latitude,
+          lon: chosen.coords.longitude,
+          accuracy: chosen.coords.accuracy,
+        });
+      },
+      () => {
+        setUserPos({ lat: -34.6037, lon: -58.3816, accuracy: 1500 }); // CABA fallback
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
+
+    return () => { if (watchId != null) navigator.geolocation.clearWatch(watchId); };
   }, []);
 
-    const filteredNearby = useMemo(() => {
-    if (!userPos) return [];
-    const byType = (t: POIType) =>
-      (t === "musician" && showMusicians) ||
-      (t === "studio" && showStudios) ||
-      (t === "event" && showEvents);
-    return allPois.filter((p) => byType(p.type) && haversineKm(userPos, p.location) <= radiusKm);
-  }, [allPois, userPos, radiusKm, showMusicians, showStudios, showEvents]);
-
-    useEffect(() => {
-    if (!mapContainerRef.current || !userPos) return;
+  // ----- Inicializar mapa (una sola vez) -----
+  useEffect(() => {
+    if (initialized.current) return;
+    if (!mapContainerRef.current) return;
 
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
-      center: [userPos.lon, userPos.lat],
+      center: [-58.3816, -34.6037], // arranca en CABA; luego recentra con userPos
       zoom: 12,
     });
     mapRef.current = map;
+    initialized.current = true;
 
     map.addControl(new mapboxgl.NavigationControl(), "top-right");
 
     map.on("load", () => {
-      // Marker “Estás acá”
+      // source/layer: yo (me)
       map.addSource("me", {
         type: "geojson",
         data: {
           type: "Feature",
-          geometry: { type: "Point", coordinates: [userPos.lon, userPos.lat] },
+          geometry: { type: "Point", coordinates: [-58.3816, -34.6037] },
           properties: {},
         },
       });
@@ -128,16 +150,16 @@ export default function Map({
         source: "me",
         paint: {
           "circle-radius": 8,
-          "circle-color": "#1d4ed8",
+          "circle-color": "#1d4ed8",           // azul por defecto
           "circle-stroke-width": 2,
           "circle-stroke-color": "#fff",
         },
       });
 
-      // Círculo de búsqueda (CU51)
+      // source/layers: radio de búsqueda
       map.addSource("search-area", {
         type: "geojson",
-        data: circlePolygon(userPos.lon, userPos.lat, radiusKm * 1000),
+        data: circlePolygon(-58.3816, -34.6037, initialRadiusKm * 1000),
       });
       map.addLayer({
         id: "search-fill",
@@ -152,8 +174,8 @@ export default function Map({
         paint: { "line-color": "#1d4ed8", "line-width": 2 },
       });
 
-      // POIs cercanos (CU48/49)
-      map.addSource("nearby", { type: "geojson", data: toGeoJSON(filteredNearby) });
+      // source/layer: nearby (POIs)
+      map.addSource("nearby", { type: "geojson", data: toGeoJSON([]) });
       map.addLayer({
         id: "nearby-points",
         type: "circle",
@@ -163,12 +185,9 @@ export default function Map({
           "circle-color": [
             "match",
             ["get", "poiType"],
-            "musician",
-            "#ef4444",
-            "studio",
-            "#10b981",
-            "event",
-            "#f59e0b",
+            "musician", "#ef4444",
+            "studio", "#10b981",
+            "event", "#f59e0b",
             "#6b7280",
           ],
           "circle-stroke-width": 1.5,
@@ -176,40 +195,234 @@ export default function Map({
         },
       });
 
-      // Popup
       map.on("click", "nearby-points", (e) => {
-        const f = e.features?.[0];
-        if (!f) return;
+        const f = e.features?.[0]; if (!f) return;
         const [lon, lat] = (f.geometry as any).coordinates as [number, number];
         const name = f.properties?.name ?? "Sin nombre";
         const type = f.properties?.poiType ?? "poi";
         new mapboxgl.Popup().setLngLat([lon, lat]).setHTML(`<b>${name}</b><br/>${type}`).addTo(map);
       });
-
       map.on("mouseenter", "nearby-points", () => (map.getCanvas().style.cursor = "pointer"));
       map.on("mouseleave", "nearby-points", () => (map.getCanvas().style.cursor = ""));
     });
 
-    return () => map.remove();
+    return () => { try { map.remove(); } catch { } mapRef.current = null; initialized.current = false; };
+  }, [initialRadiusKm]);
+
+  // ----- POIs filtrados por radio/checkboxes -----
+  const filteredNearby = useMemo(() => {
+    if (!userPos) return [];
+    const byType = (t: POIType) =>
+      (t === "musician" && showMusicians) ||
+      (t === "studio" && showStudios) ||
+      (t === "event" && showEvents);
+    return allPois.filter((p) => byType(p.type) && haversineKm(userPos, p.location) <= radiusKm);
+  }, [allPois, userPos, radiusKm, showMusicians, showStudios, showEvents]);
+
+  // ----- Actualizar fuentes (me, search-area, nearby) -----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded() || !userPos) return;
+
+    // mover "me"
+    const meSrc = map.getSource("me") as mapboxgl.GeoJSONSource | undefined;
+    if (meSrc) {
+      meSrc.setData({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [userPos.lon, userPos.lat] },
+        properties: {},
+      });
+    }
+
+    // actualizar radio
+    const area = map.getSource("search-area") as mapboxgl.GeoJSONSource | undefined;
+    if (area) area.setData(circlePolygon(userPos.lon, userPos.lat, radiusKm * 1000));
+
+    // actualizar nearby
+    const src = map.getSource("nearby") as mapboxgl.GeoJSONSource | undefined;
+    if (src) src.setData(toGeoJSON(filteredNearby));
+  }, [userPos, radiusKm, filteredNearby]);
+
+  // ----- Recentrar si me moví > 200m -----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !userPos) return;
+    const c = map.getCenter();
+    const distKm = haversineKm({ lat: c.lat, lon: c.lng }, userPos);
+    if (distKm > 0.2) {
+      map.easeTo({ center: [userPos.lon, userPos.lat], duration: 600 });
+    }
   }, [userPos]);
 
-
-    useEffect(() => {
+  // ----- Live users: cargar/actualizar layer -----
+  useEffect(() => {
     const map = mapRef.current;
     if (!map || !map.isStyleLoaded()) return;
 
-    // círculo
-    const area = map.getSource("search-area") as mapboxgl.GeoJSONSource | undefined;
-    if (area && userPos) area.setData(circlePolygon(userPos.lon, userPos.lat, radiusKm * 1000));
+    const srcId = "live-users";
+    const layerId = "live-users-points";
 
-    // puntos
-    const src = map.getSource("nearby") as mapboxgl.GeoJSONSource | undefined;
-    if (src) src.setData(toGeoJSON(filteredNearby));
-  }, [filteredNearby, radiusKm, userPos]);
+    const data: GeoJSON.FeatureCollection = {
+      type: "FeatureCollection",
+      features: liveUsers.map(u => ({
+        type: "Feature",
+        properties: { idUser: u.idUser, name: u.displayName ?? `User ${u.idUser}` },
+        geometry: { type: "Point", coordinates: [u.lon, u.lat] },
+      })),
+    };
 
-    return(
+    const src = map.getSource(srcId) as mapboxgl.GeoJSONSource | undefined;
+    if (!src) {
+      map.addSource(srcId, {
+        type: "geojson",
+        data,
+        cluster: true,
+        clusterRadius: 40,
+        clusterMaxZoom: 14,
+      });
+      map.addLayer({
+        id: "live-users-clusters",
+        type: "circle",
+        source: "live-users",
+        filter: ["has", "point_count"],
+        paint: {
+          "circle-radius": 16,
+          "circle-color": "#9333ea",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#fff",
+        },
+      });
+      map.addLayer({
+        id: "live-users-cluster-count",
+        type: "symbol",
+        source: "live-users",
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": ["get", "point_count_abbreviated"],
+          "text-size": 12,
+          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        },
+      });
+      map.addLayer({
+        id: layerId,
+        type: "circle",
+        source: srcId,
+        filter: ["!", ["has", "point_count"]],
+        paint: {
+          "circle-radius": 6,
+          "circle-color": "#9333ea", // violeta usuarios live
+          "circle-stroke-width": 1.5,
+          "circle-stroke-color": "#fff",
+        },
+      });
+      map.on("click", layerId, (e) => {
+        const f = e.features?.[0]; if (!f) return;
+        const [lon, lat] = (f.geometry as any).coordinates as [number, number];
+        const name = f.properties?.name ?? "Usuario";
+        new mapboxgl.Popup().setLngLat([lon, lat]).setHTML(`<b>${name}</b><br/>en línea`).addTo(map);
+      });
+
+      map.on("click", "live-users-clusters", (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: ["live-users-clusters"] });
+        const clusterId = features[0].properties?.cluster_id;
+        (map.getSource("live-users") as any).getClusterExpansionZoom(clusterId, (err: any, zoom: number) => {
+          if (err) return;
+          const center = (features[0].geometry as any).coordinates;
+          map.easeTo({ center, zoom });
+        });
+      });
+
+      map.on("mouseenter", layerId, () => (map.getCanvas().style.cursor = "pointer"));
+      map.on("mouseleave", layerId, () => (map.getCanvas().style.cursor = ""));
+    } else {
+      src.setData(data);
+    }
+  }, [liveUsers]);
+
+  // ----- Color de mi punto según sharing -----
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (map.getLayer("me-point")) {
+      map.setPaintProperty("me-point", "circle-color", shareLive ? "#9333ea" : "#1d4ed8");
+    }
+  }, [shareLive]);
+
+  // ----- Publicar presencia cada 10s si estoy compartiendo -----
+  useEffect(() => {
+    if (!shareLive || !userPos || !ready) return;
+    const idUser = user?.idUser ?? 0;
+    if (!idUser) return;
+
+    // filtra lecturas imprecisas (>100m)
+    if ((userPos.accuracy ?? 9999) > 1000) return;
+
+    let cancelled = false;
+    let timer: any;
+
+    const push = async () => {
+      try {
+        await fetch(`${API}/presence`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            idUser,
+            lat: userPos.lat,
+            lon: userPos.lon,
+            displayName: user?.email?.split("@")[0] ?? `User ${idUser}`,
+          }),
+        });
+      } catch { }
+    };
+
+    const loop = async () => {
+      if (cancelled) return;
+      await push();
+      timer = setTimeout(loop, 10_000);
+    };
+
+    loop();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [shareLive, userPos, user?.idUser, ready, API, user?.email]);
+
+  // ----- Pull de presencia cerca cada 6s -----
+  useEffect(() => {
+    if (!userPos) return;
+    let cancelled = false;
+    let timer: any;
+
+    const pull = async () => {
+      try {
+        const url = new URL(`${API}/presence/near`);
+        url.searchParams.set("lat", String(userPos.lat));
+        url.searchParams.set("lon", String(userPos.lon));
+        url.searchParams.set("radiusKm", String(radiusKm));
+        const res = await fetch(url, { credentials: "include" });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+
+        const meId = user?.idUser;
+        const list: LiveUser[] = Array.isArray(json.data) ? json.data : [];
+        const filtered = !meId ? list : list.filter(u => (shareLive ? true : u.idUser !== meId));
+        if (!cancelled) setLiveUsers(filtered);
+      } catch { }
+    };
+
+    const loop = async () => {
+      if (cancelled) return;
+      await pull();
+      timer = setTimeout(loop, 6_000);
+    };
+
+    loop();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [userPos, radiusKm, shareLive, user?.idUser, API]);
+
+  // ========= UI =========
+  return (
     <div className="flex flex-col gap-3">
-      {/* Controles (CU50/CU51) */}
+      {/* Controles */}
       <div className="flex flex-wrap items-center gap-3 text-sm">
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={showMusicians} onChange={(e) => setShowMusicians(e.target.checked)} />
@@ -222,6 +435,11 @@ export default function Map({
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
           Eventos
+        </label>
+
+        <label className="flex items-center gap-2 ml-4">
+          <input type="checkbox" checked={shareLive} onChange={(e) => setShareLive(e.target.checked)} />
+          Compartir mi ubicación (en vivo)
         </label>
 
         <div className="flex items-center gap-2 ml-4">
@@ -250,5 +468,3 @@ export default function Map({
     </div>
   );
 }
-
-
