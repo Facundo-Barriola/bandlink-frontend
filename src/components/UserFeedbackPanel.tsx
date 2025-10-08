@@ -61,6 +61,10 @@ function fmtDate(iso: string) {
   return `${d.toLocaleDateString("es-AR")} · ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
+function toFixedOrDash(v: unknown, digits = 1): string {
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n.toFixed(digits) : "—";
+}
 // ---- Component ----
 export default function UserFeedbackPanel({
   targetIdUser,
@@ -237,7 +241,7 @@ export default function UserFeedbackPanel({
         {/* Summary */}
         <div className="flex items-center gap-4">
           <div className="text-3xl font-semibold text-[#65558F]">{avg ? avg.toFixed(1) : "–"}</div>
-          <div>
+          <div> 
             <Stars value={avg} size={18} />
             <div className="text-xs text-muted-foreground">{ratingsCount} {ratingsCount === 1 ? "reseña" : "reseñas"}</div>
           </div>

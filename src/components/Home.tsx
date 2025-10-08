@@ -73,6 +73,8 @@ type BookingVM = {
   confirmationCode?: string | null;
   totalAmount?: number | null;
   paymentStatus?: string | null;
+  startsAtIso: string;
+  endsAtIso: string;
 };
 
 const primary = "bg-[#65558F] hover:bg-[#51447A] text-white";
@@ -109,6 +111,9 @@ function isPaidStatus(s?: string | null) {
   return ["approved", "paid", "completed"].includes(lower);
 }
 
+const nowMs = () => Date.now();
+const isFutureByEnd = (endsAtIso: string) => new Date(endsAtIso).getTime() >= nowMs();
+
 type Suggestion = { id: string; name: string; roles: string };
 
 type Review = { id: string; author: string; rating: number; text: string };
@@ -121,8 +126,8 @@ function PaymentStatusBadge({ status }: { status?: string | null }) {
     ["approved", "paid", "completed"].includes(lower)
       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
       : ["pending", "in_process"].includes(lower)
-      ? "bg-amber-50 text-amber-700 border-amber-200"
-      : "bg-rose-50 text-rose-700 border-rose-200";
+        ? "bg-amber-50 text-amber-700 border-amber-200"
+        : "bg-rose-50 text-rose-700 border-rose-200";
   return (
     <Badge className={`rounded-full border ${cls}`}>{txt}</Badge>
   );
@@ -173,7 +178,11 @@ export default function HomePage() {
             confirmationCode: it.confirmationCode ?? null,
             totalAmount: it.totalAmount ?? null,
             paymentStatus: it.paymentStatus ?? null,
-          }));
+            startsAtIso: it.startsAt,
+            endsAtIso: it.endsAt,
+          }))
+            .filter((x) => isFutureByEnd(x.endsAtIso))
+            .sort((a, b) => new Date(a.startsAtIso).getTime() - new Date(b.startsAtIso).getTime());
           setBookings(mapped);
         } else {
           const mapped = json.data.map((it) => ({
@@ -185,6 +194,8 @@ export default function HomePage() {
             contactNumber: it.contactNumber ?? null,
             confirmationCode: it.confirmationCode ?? null,
             totalAmount: it.totalAmount ?? null,
+            startsAtIso: it.startsAt,
+            endsAtIso: it.endsAt,
           }));
           setBookings(mapped);
         }
@@ -222,7 +233,10 @@ export default function HomePage() {
     const delta = dir === "left" ? -rail.clientWidth : rail.clientWidth;
     rail.scrollBy({ left: delta, behavior: "smooth" });
   };
-
+  const nextBooking = useMemo(
+    () => (bookings.length > 0 ? bookings[0] : null),
+    [bookings]
+  );
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-8">
       {/* KPIs */}
@@ -243,7 +257,7 @@ export default function HomePage() {
       </section>
 
       {/* Acciones rápidas */}
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2 ">
         <FriendsDialogButton
           meId={meId}
           apiBase={API}
@@ -251,14 +265,19 @@ export default function HomePage() {
           buildProfileUrl={(id) => `${API}/directory/${id}/profile`}
           onSelectFriend={(friendId) => window.location.assign(`/profile/${friendId}`)}
         />
-        <EventWizard onCreated={() => {}} trigger={<Button className="rounded-2xl">Nuevo evento</Button>} />
+        <EventWizard onCreated={() => { }} trigger={<Button className="rounded-2xl">Nuevo evento</Button>} />
       </div>
 
       {/* Próximas reservas */}
       <section className="space-y-3">
         <div className="flex items-center gap-2 text-lg font-semibold">
           <CalendarDays className="h-5 w-5 text-[#65558F]" />
-          <span>Mis próximas reservas: {today}</span>
+          <span>Mis próximas reservas</span>
+          {nextBooking && (
+            <span className="text-sm text-muted-foreground">
+              · Próxima: {nextBooking.day} {nextBooking.from}
+            </span>
+          )}
         </div>
 
         {loading && (

@@ -13,6 +13,7 @@ import EditEventDialog from "@/components/EditEventDialog";
 import { RateUserButton } from "@/components/RateUserButton";
 import { ReportUserButton } from "@/components/ReportUserDialog";
 import UserFeedbackPanel from "@/components/UserFeedbackPanel";
+import { InviteToBandButton } from "./InviteToBandButton";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -131,7 +132,7 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
       let json: any = {};
       try {
         json = await res.json();
-      } catch {}
+      } catch { }
       if (!res.ok || json?.ok === false) {
         if (res.status === 403) throw new Error("No sos admin de esta banda.");
         if (res.status === 404) throw new Error("La banda no existe.");
@@ -161,7 +162,7 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
       let json: any = {};
       try {
         json = await res.json();
-      } catch {}
+      } catch { }
       if (!res.ok || json?.ok === false) {
         if (res.status === 403) throw new Error("No sos admin de este evento.");
         if (res.status === 404) throw new Error("El evento no existe");
@@ -283,12 +284,18 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
                 <RateUserButton targetIdUser={userData.idUser} />
                 {/* Mostrar Reportar solo si no es su propio perfil */}
                 <ReportUserButton reportedIdUser={userData.idUser} />
+                <InviteToBandButton
+                  // si querés forzar una banda específica, pasá bandId={...}
+                  targetMusicianId={userData.idUser}
+                  buttonLabel="Invitar a banda"
+                  className="rounded-xl shadow-sm"
+                />
               </>
             )}
           </div>
         </CardContent>
       </Card>
-    <UserFeedbackPanel targetIdUser={userData.idUser} showCommentBox />
+      <UserFeedbackPanel targetIdUser={userData.idUser} showCommentBox />
 
       {/* Instruments & Genres */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

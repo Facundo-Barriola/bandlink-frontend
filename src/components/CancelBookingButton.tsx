@@ -40,7 +40,6 @@ export default function CancelBookingButton({ idBooking, totalAmount, onDone }: 
         throw new Error(msg);
       }
 
-      // Éxito → avisamos arriba para sacar la card o refrescar
       if (onDone) onDone();
       toast.success("Reserva cancelada. Si estaba paga, se realizó el reembolso.");
     } catch (e: any) {

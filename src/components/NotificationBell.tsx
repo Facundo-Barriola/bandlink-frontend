@@ -6,6 +6,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
 type Notif = {
   idNotification: number;
+  clientKey: string;
   type: string;
   title: string | null;
   body: string | null;
@@ -13,7 +14,15 @@ type Notif = {
   createdAt: string;
   readAt: string | null;
 };
-
+function safeParse(v: any) {
+  if (typeof v !== "string") return v ?? {};
+  try { return JSON.parse(v); } catch { return {}; }
+}
+const toNum = (v: any): number | null => {
+  const n = typeof v === "string" ? Number.parseInt(v, 10)
+    : typeof v === "number" ? v : NaN;
+  return Number.isFinite(n) ? n : null;
+};
 export default function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
@@ -23,6 +32,26 @@ export default function NotificationBell() {
     const r = await fetch(`${API}/notifications?limit=20`, { credentials: "include" });
     const j = await r.json();
     if (j?.ok) setItems(j.data);
+    const normalized: Notif[] = (j.data ?? []).map((raw: any, i: number) => {
+      const id = toNum(raw.idNotification ?? raw.idnotification ?? raw.id);
+      const createdAt = raw.createdAt ?? raw.createdat ?? new Date().toISOString();
+      return {
+        idNotification: id,
+        clientKey: `n-${id ?? `tmp-${i}`}-${createdAt}`,
+        type: raw.type ?? "",
+        title: raw.title ?? "BandLink",
+        body: raw.body ?? null,
+        data: safeParse(raw.data),
+        createdAt,
+        readAt: raw.readAt ?? raw.readat ?? null,
+      };
+    });
+
+    const uniq = new Map<string, Notif>();
+    for (const n of normalized) {
+      uniq.set(`${n.idNotification}-${n.createdAt}`, n);
+    }
+    setItems([...uniq.values()]);
   }
 
   async function markAsRead(id: number) {
@@ -52,22 +81,25 @@ export default function NotificationBell() {
         <div className="absolute right-0 mt-2 w-80 max-h-[60vh] overflow-auto rounded-xl border bg-background shadow-lg">
           <div className="p-2 flex items-center justify-between border-b">
             <span className="font-medium">Notificaciones</span>
-            <button onClick={markAllRead} className="text-xs underline">Marcar todas como leídas</button>
+            <button onClick={markAllRead} className="text-xs underline cursor-pointer">Marcar todas como leídas</button>
           </div>
 
           <ul className="divide-y">
             {items.length === 0 && (
               <li className="p-4 text-sm text-muted-foreground">Sin notificaciones</li>
             )}
-            {items.map(n => (
-              <li key={n.idNotification}
-                  onClick={() => {
+            {items.map((n) => (
+              <li
+                key={n.clientKey}
+                onClick={() => {
+                  if (n.idNotification != null) {
                     markAsRead(n.idNotification);
-                    // deep-link básico
-                    if (n.data?.idEvent) window.location.href = `/events/${n.data.idEvent}`;
-                    else if (n.data?.idBooking) window.location.href = `/bookings/${n.data.idBooking}`;
-                  }}
-                  className={`p-3 cursor-pointer hover:bg-accent ${!n.readAt ? "bg-accent/40" : ""}`}>
+                  }
+                  if (n.data?.idEvent) window.location.href = `/events/${n.data.idEvent}`;
+                  else if (n.data?.idBooking) window.location.href = `/bookings/${n.data.idBooking}`;
+                }}
+                className={`p-3 cursor-pointer hover:bg-accent ${!n.readAt ? "bg-accent/40" : ""}`}
+              >
                 <div className="text-sm font-medium">{n.title ?? "BandLink"}</div>
                 {n.body && <div className="text-sm text-muted-foreground">{n.body}</div>}
                 <div className="text-[11px] text-muted-foreground mt-1">{new Date(n.createdAt).toLocaleString()}</div>

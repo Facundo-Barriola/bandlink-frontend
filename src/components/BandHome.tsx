@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,19 +9,22 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Crown, Users, Music2, Pencil, ArrowLeft, } from "lucide-react";
+import { Crown, Users, Music2, Pencil, ArrowLeft } from "lucide-react";
 import {
-  Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose,
+  Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useUser } from "@/app/context/userContext";
+import EditBandDialog from "@/components/EditBandDialog";
+import { UserPlus, UserCheck } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+const BRAND = "#65558F";
 
+// ===== Tipos =====
 type GenreObj = { idGenre: number; genreName: string };
 type Member = {
   idMusician: number;
@@ -117,8 +119,12 @@ export default function BandHome() {
   const [titleS, setTitleS] = useState("");
   const [descS, setDescS] = useState("");
   const [instIdS, setInstIdS] = useState<string>("");
-  const [levelS, setLevelS] = useState<string>(""); // 'beginner' | 'intermediate' | 'advanced' | ...
+  const [levelS, setLevelS] = useState<string>("");
   const [remoteS, setRemoteS] = useState<boolean>(false);
+
+  type MembershipState = { isMember: boolean; isFollowing: boolean } | null;
+  const [mship, setMship] = useState<MembershipState>(null);
+  const [savingFollow, setSavingFollow] = useState(false);
 
   const isAdmin = useMemo(() => {
     if (!data || !Number.isFinite(myMusicianId as any)) return false;
@@ -154,6 +160,28 @@ export default function BandHome() {
     }
   }
 
+  async function toggleFollow() {
+    if (!data || !mship || savingFollow) return;
+    try {
+      setSavingFollow(true);
+      const next = !mship.isFollowing;
+      setMship({ ...mship, isFollowing: next }); // UI optimista
+      const method = next ? "POST" : "DELETE";
+      const r = await fetch(`${API_URL}/bands/${data.idBand}/follow`, {
+        method,
+        credentials: "include",
+        headers: { Accept: "application/json" },
+      });
+      if (!r.ok) throw new Error(await r.text());
+      toast.success(next ? "Ahora seguís a la banda" : "Dejaste de seguir la banda");
+    } catch (e: any) {
+      setMship((prev) => (prev ? { ...prev, isFollowing: !prev.isFollowing } : prev));
+      toast.error(e?.message ?? "No se pudo actualizar el seguimiento");
+    } finally {
+      setSavingFollow(false);
+    }
+  }
+
   useEffect(() => {
     if (!ready || !user) return;
 
@@ -163,7 +191,6 @@ export default function BandHome() {
       return;
     }
 
-    // fallback: mapear idUser -> idMusician
     (async () => {
       try {
         const res = await fetch(`${API_URL}/directory/${user.idUser}/profile`, {
@@ -176,7 +203,6 @@ export default function BandHome() {
         const id = Number(payload?.musician?.idMusician);
         if (Number.isFinite(id) && id > 0) setMyMusicianId(id);
       } catch (e) {
-        // si falla, myMusicianId queda null y no se mostrarán botones
         console.warn("No se pudo resolver idMusician del usuario:", e);
       }
     })();
@@ -216,9 +242,35 @@ export default function BandHome() {
     return () => ac.abort("cleanup");
   }, [hasId, bandId]);
 
+  useEffect(() => {
+    if (!data?.idBand) return;
+    (async () => {
+      try {
+        const r = await fetch(`${API_URL}/bands/${data.idBand}/membership`, {
+          credentials: "include",
+          headers: { Accept: "application/json" },
+          cache: "no-store",
+        });
+        if (r.ok) {
+          const m = await r.json();
+          const isMember = !!m.isMember;
+          const isFollowing = !!m.isFollowing;
+          setMship({ isMember, isFollowing });
+        } else {
+          const isMember = data.members.some((m) => m.idMusician === myMusicianId);
+          setMship({ isMember, isFollowing: false });
+        }
+      } catch {
+        const isMember = data.members.some((m) => m.idMusician === myMusicianId);
+        setMship({ isMember, isFollowing: false });
+      }
+    })();
+  }, [data?.idBand, myMusicianId]);
+
+  // ====== Render ======
   if (!hasId) {
     return (
-      <div className="max-w-5xl mx-auto p-6 space-y-6">
+      <div className="max-w-6xl mx-auto p-6 sm:p-8 space-y-6">
         <Card className="rounded-2xl">
           <CardContent className="p-6">
             <p className="text-sm text-muted-foreground">Cargando…</p>
@@ -229,14 +281,14 @@ export default function BandHome() {
   }
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <Skeleton className="h-7 w-52 rounded-xl" />
+      <div className="max-w-6xl mx-auto p-6 sm:p-8 space-y-6">
+        <section className="flex items-center justify-between">
+          <Skeleton className="h-8 w-60 rounded-xl" />
           <div className="flex gap-2">
-            <Skeleton className="h-9 w-20 rounded-xl" />
             <Skeleton className="h-9 w-24 rounded-xl" />
+            <Skeleton className="h-9 w-28 rounded-xl" />
           </div>
-        </div>
+        </section>
         <Card className="rounded-2xl">
           <CardContent className="p-6">
             <Skeleton className="h-5 w-64 mb-2" />
@@ -252,12 +304,11 @@ export default function BandHome() {
     );
   }
 
-
   if (!isBandView(data)) {
     return (
-      <div className="max-w-5xl mx-auto p-6 space-y-6">
+      <div className="max-w-6xl mx-auto p-6 sm:p-8 space-y-6">
         <div className="flex items-center justify-between">
-          <Button variant="outline" onClick={() => router.back()}>
+          <Button variant="outline" onClick={() => router.back()} className="rounded-xl">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Volver
           </Button>
@@ -276,87 +327,166 @@ export default function BandHome() {
   const { name, description, genres, members } = data;
 
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-6">
+    <div className="max-w-6xl mx-auto p-6 sm:p-8 space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-[#65558F]">{name}</h1>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => router.back()}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Volver
-          </Button>
-          {isAdmin && (
-            <>
-              <Button className="bg-[#65558F] text-white" onClick={() => router.push(`/bands/${data.idBand}/manage`)}>
-                <Pencil className="mr-2 h-4 w-4" />
-                Administrar
+      <section className="relative overflow-hidden rounded-2xl border bg-gradient-to-br from-[#65558F]/15 via-background to-background">
+        <div className="p-5 sm:p-7">
+          <div className="flex flex-col gap-3 sm:gap-4">
+            <h1 className="text-3xl font-bold tracking-tight" style={{ color: BRAND }}>
+              {name}
+            </h1>
+
+            <div className="flex flex-wrap items-center justify-end gap-2 sm:gap-3 mt-2 pt-2 border-t border-border/60">
+              {isAdmin && (
+                <>
+                  <Button
+                    className="h-9 rounded-xl px-4 min-w-[140px] text-white"
+                    style={{ backgroundColor: BRAND }}
+                    onClick={() => {
+                      document
+                        .getElementById("edit-band-dialog-trigger")
+                        ?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+                    }}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Administrar
+                  </Button>
+
+                  <Dialog open={openSearch} onOpenChange={setOpenSearch}>
+                    <DialogTrigger asChild>
+                      <Button
+                        className="h-9 rounded-xl px-4 min-w-[160px] text-white"
+                        style={{ backgroundColor: BRAND }}
+                      >
+                        Publicar búsqueda
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle>Nueva búsqueda de músico</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-1">
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Título *</label>
+                          <Input
+                            value={titleS}
+                            onChange={(e) => setTitleS(e.target.value)}
+                            placeholder="Ej: Buscamos guitarrista líder"
+                            className="rounded-xl"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-sm font-medium">Descripción</label>
+                          <Textarea
+                            rows={4}
+                            value={descS}
+                            onChange={(e) => setDescS(e.target.value)}
+                            placeholder="Detalles, horarios, referencias..."
+                            className="rounded-xl"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-medium">ID Instrumento (opcional)</label>
+                            <Input
+                              value={instIdS}
+                              onChange={(e) => setInstIdS(e.target.value)}
+                              placeholder="Ej: 1 (Guitarra)"
+                              className="rounded-xl"
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-sm font-medium">Nivel mínimo (opcional)</label>
+                            <Input
+                              value={levelS}
+                              onChange={(e) => setLevelS(e.target.value)}
+                              placeholder="beginner|intermediate|advanced..."
+                              className="rounded-xl"
+                            />
+                          </div>
+                        </div>
+                        <label className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={remoteS}
+                            onCheckedChange={(v) => setRemoteS(Boolean(v))}
+                          />
+                          Trabajo remoto / a distancia
+                        </label>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setOpenSearch(false)} className="rounded-xl">
+                          Cancelar
+                        </Button>
+                        <Button
+                          onClick={createSearch}
+                          className="rounded-xl text-white"
+                          style={{ backgroundColor: BRAND }}
+                        >
+                          Publicar
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </>
+              )}
+
+              {mship && !mship.isMember && (
+                <Button
+                  variant={mship.isFollowing ? "outline" : "default"}
+                  className={`h-9 rounded-xl px-4 min-w-[148px] ${mship.isFollowing ? "" : "text-white"}`}
+                  style={mship.isFollowing ? undefined : { backgroundColor: BRAND }}
+                  onClick={toggleFollow}
+                  disabled={savingFollow}
+                >
+                  {mship.isFollowing ? (
+                    <>
+                      <UserCheck className="mr-2 h-4 w-4" /> Siguiendo
+                    </>
+                  ) : (
+                    <>
+                      <UserPlus className="mr-2 h-4 w-4" /> Seguir banda
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {/* Volver (secundario) */}
+              <Button
+                variant="outline"
+                onClick={() => router.back()}
+                className="h-9 rounded-xl px-4 min-w-[112px] transition-all"
+              >
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Volver
               </Button>
-              <Dialog open={openSearch} onOpenChange={setOpenSearch}>
-                <DialogTrigger asChild>
-                  <Button className="bg-[#65558F] text-white">Publicar búsqueda</Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Nueva búsqueda de músico</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm">Título *</label>
-                      <Input value={titleS} onChange={(e) => setTitleS(e.target.value)} placeholder="Ej: Buscamos guitarrista líder" />
-                    </div>
-                    <div>
-                      <label className="text-sm">Descripción</label>
-                      <Textarea rows={4} value={descS} onChange={(e) => setDescS(e.target.value)} placeholder="Detalles, horarios, referencias..." />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-sm">ID Instrumento (opcional)</label>
-                        <Input value={instIdS} onChange={(e) => setInstIdS(e.target.value)} placeholder="Ej: 1 (Guitarra)" />
-                      </div>
-                      <div>
-                        <label className="text-sm">Nivel mínimo (opcional)</label>
-                        <Input value={levelS} onChange={(e) => setLevelS(e.target.value)} placeholder="beginner|intermediate|advanced..." />
-                      </div>
-                    </div>
-                    <label className="flex items-center gap-2">
-                      <Checkbox checked={remoteS} onCheckedChange={(v) => setRemoteS(Boolean(v))} />
-                      <span>Trabajo remoto / a distancia</span>
-                    </label>
-                  </div>
-                  <DialogFooter>
-                    <Button variant="outline" onClick={() => setOpenSearch(false)}>Cancelar</Button>
-                    <Button className="bg-[#65558F] text-white" onClick={createSearch}>Publicar</Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </>
-          )}
+            </div>
+
+          </div>
         </div>
-      </div>
+      </section>
 
       {/* Descripción */}
-      <Card className="rounded-2xl">
-        <CardContent className="p-6 space-y-3">
-          <div className="flex items-center gap-2 text-[#65558F]">
-            <Music2 className="h-5 w-5" />
-            <span className="font-medium">Descripción</span>
+      <Card className="rounded-2xl shadow-sm border">
+        <CardContent className="p-6 sm:p-8 space-y-4">
+          <div className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium" style={{ color: BRAND, backgroundColor: "#65558F1A" }}>
+            <Music2 className="h-4 w-4" /> Descripción
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm leading-relaxed text-muted-foreground">
             {description ?? "Sin descripción."}
           </p>
         </CardContent>
       </Card>
 
       {/* Géneros y Miembros */}
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card className="rounded-2xl">
-          <CardHeader>
-            <CardTitle className="text-[#65558F]">Géneros</CardTitle>
+      <div className="grid gap-6 md:grid-cols-2">
+        <Card className="rounded-2xl shadow-sm border">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base font-semibold" style={{ color: BRAND }}>Géneros</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {genres.length ? (
               genres.map((g) => (
-                <Badge key={g.idGenre} variant="outline">
+                <Badge key={g.idGenre} variant="secondary" className="rounded-full border bg-muted/40 hover:bg-muted">
                   {g.genreName}
                 </Badge>
               ))
@@ -366,33 +496,32 @@ export default function BandHome() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl">
-          <CardHeader className="flex-row items-center justify-between">
-            <CardTitle className="text-[#65558F] flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Miembros
+        <Card className="rounded-2xl shadow-sm border">
+          <CardHeader className="flex-row items-center justify-between pb-3">
+            <CardTitle className="text-base font-semibold flex items-center gap-2" style={{ color: BRAND }}>
+              <Users className="h-5 w-5" /> Miembros
             </CardTitle>
-            <Badge variant="secondary">{members.length}</Badge>
+            <Badge variant="outline" className="rounded-full">{members.length}</Badge>
           </CardHeader>
           <CardContent className="space-y-3">
             {members.length ? (
               members.map((m) => (
-                <div key={m.idMusician} className="flex items-center justify-between border rounded-xl p-3">
+                <div key={m.idMusician} className="flex items-center justify-between rounded-xl border p-3 hover:bg-muted/40 transition-colors">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-9 w-9">
                       <AvatarImage src={m.avatarUrl || undefined} />
-                      <AvatarFallback>{(m.displayName ?? "?").slice(0, 2).toUpperCase()}</AvatarFallback>
+                      <AvatarFallback className="text-xs font-medium">{(m.displayName ?? "?").slice(0, 2).toUpperCase()}</AvatarFallback>
                     </Avatar>
                     <div className="text-sm">
-                      <div className="font-medium">{m.displayName}</div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="font-medium leading-none">{m.displayName}</div>
+                      <div className="text-xs text-muted-foreground mt-1">
                         {m.roleInBand ?? "Sin rol asignado"}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     {m.isAdmin && (
-                      <Badge className="inline-flex items-center gap-1">
+                      <Badge className="inline-flex items-center gap-1 rounded-full" style={{ backgroundColor: "#F5F3FF", color: BRAND }}>
                         <Crown className="h-3.5 w-3.5" /> Admin
                       </Badge>
                     )}
@@ -405,12 +534,20 @@ export default function BandHome() {
           </CardContent>
         </Card>
       </div>
-
-      {/* (Opcional) Sección futura: Próximos ensayos/eventos de la banda */}
-      {/* <Card className="rounded-2xl">
-        <CardHeader><CardTitle className="text-[#65558F]">Agenda</CardTitle></CardHeader>
-        <CardContent>…</CardContent>
-      </Card> */}
+      <button id="edit-band-dialog-trigger" className="hidden" />
+      <EditBandDialog
+        idBand={data.idBand}
+        onUpdated={(patch) => {
+          setData((prev) => {
+            if (!prev) return prev;
+            const next = { ...prev } as any;
+            if (patch.name !== undefined) next.name = patch.name ?? next.name;
+            if (patch.description !== undefined) next.description = patch.description ?? next.description;
+            if (patch.genres) next.genres = patch.genres.map((g, i) => ({ idGenre: i + 1, genreName: g }));
+            return next;
+          });
+        }}
+      />
     </div>
   );
 }

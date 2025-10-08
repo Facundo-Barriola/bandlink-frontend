@@ -43,7 +43,7 @@ export default function FriendsDialogButton({
 
   return (
     <>
-      <Button type="button" variant="secondary" className="inline-flex items-center gap-2 rounded-xl"
+      <Button type="button" variant="secondary" className="inline-flex items-center gap-2 rounded-xl bg-[#EADDFF]"
         onClick={() => setOpen(true)} aria-label="Ver amigos">
         <Users className="h-4 w-4" />
         Amigos

@@ -248,7 +248,7 @@ export default function StudioProfile({ viewUserId }: { viewUserId?: number }) {
   const isOwner = ready && user?.idUser === Number(effectiveId);
   const userGroup = asInt(user?.idUserGroup);
   const canReserve = ready && !isOwner && userGroup === 2;
-
+  console.log(canReserve, { ready, isOwner, userGroup }, user?.idUserGroup);
   const lat = asNumber(userData.latitude);
   const lng = asNumber(userData.longitude);
   const fullAddress = buildFullAddress(userData.address);

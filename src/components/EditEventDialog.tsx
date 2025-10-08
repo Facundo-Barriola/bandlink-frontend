@@ -23,15 +23,25 @@ import {
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CalendarCheck2, Loader2, MapPin, Shield, Users } from "lucide-react";
-import LocationCascade from "@/components/LocationCascade";
+import LocationCascade, { LocationCascadeValue } from "@/components/LocationCascade";
 
 export type EditEventDialogProps = {
   eventId: number;
   trigger?: React.ReactElement;
   onUpdated?: (event: any) => void;
   apiBaseUrl?: string;
-  token?: string; 
+  token?: string;
 };
+
+type SelectedLoc = {
+  provinceId?: string | null;
+  provinceName?: string | null;
+  municipioId?: string | null;
+  municipioName?: string | null;
+  idCity?: number | null;
+};
+
+
 
 export default function EditEventDialog({
   eventId,
@@ -44,6 +54,7 @@ export default function EditEventDialog({
   const [loading, setLoading] = React.useState(false);
   const [loadingEvent, setLoadingEvent] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [loc, setLoc] = React.useState<SelectedLoc>({});
 
   const API = React.useMemo(
     () => apiBaseUrl || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000",
@@ -64,6 +75,40 @@ export default function EditEventDialog({
   const [street, setStreet] = React.useState("");
   const [streetNum, setStreetNum] = React.useState<string>("");
   const [addressDesc, setAddressDesc] = React.useState("");
+
+
+  const handleLocChange = React.useCallback((val: LocationCascadeValue) => {
+    setLoc({
+      provinceId: val.provinceId ?? null,
+      provinceName: val.provinceName ?? null,
+      municipioId: val.municipioId ?? null,
+      municipioName: val.municipioName ?? null,
+      idCity: val.idCity ?? null,
+    });
+    setIdCity(val.idCity ? String(val.idCity) : "");
+  }, []);
+
+  async function geocodeAR(opts: {
+    provinceName?: string | null;
+    municipioName?: string | null;
+    street?: string;
+    number?: string;
+  }): Promise<{ lat: number; lon: number } | null> {
+    const { provinceName, municipioName, street, number } = opts;
+    if (!provinceName || !street || !number) return null;
+    const q = `${street} ${number}, ${municipioName ?? ""}, ${provinceName}, Argentina`.replace(/\s+,/g, ",");
+
+    try {
+      const r = await fetch(`/api/geocode/search?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+      if (!r.ok) return null;
+      const json = await r.json();
+      const f = Array.isArray(json?.features) ? json.features[0] : null;
+      if (f && typeof f.lat === "number" && typeof f.lon === "number") {
+        return { lat: f.lat, lon: f.lon };
+      }
+    } catch { }
+    return null;
+  }
 
   function toInputValue(raw?: string | null) {
     if (!raw) return "";
@@ -155,20 +200,43 @@ export default function EditEventDialog({
     };
 
     if (changeAddress) {
-      if (!idCity || !street.trim() || !streetNum) {
-        return setError("Completá país/provincia/ciudad, calle y número para cambiar la dirección.");
+      // permitir fallback: nombres obligatorios, idCity opcional
+      if (!loc?.provinceName || !loc?.municipioName || !street.trim() || !streetNum) {
+        return setError("Completá provincia, ciudad/municipio, calle y número para cambiar la dirección.");
       }
-      payload.address = {
-        idCity: Number(idCity),
+
+      // geocodificá para lat/lon (usando tu proxy de Mapbox)
+      const coords = await geocodeAR({
+        provinceName: loc.provinceName!,
+        municipioName: loc.municipioName!,
+        street,
+        number: streetNum,
+      });
+
+      const address: any = {
         street: street.trim(),
         streetNum: Number(streetNum),
         addressDesc: addressDesc.trim() || null,
+        provinceName: loc.provinceName,
+        municipioName: loc.municipioName,
+        georef: {
+          provinceId: loc.provinceId ?? null,
+          municipioId: loc.municipioId ?? null,
+        },
+        lat: coords?.lat ?? null,
+        lon: coords?.lon ?? null,
       };
+
+      if (idCity) address.idCity = Number(idCity); 
+
+      payload.address = address;
     }
 
     setLoading(true);
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (token) headers["Authorization"] = `Bearer ${token}`; 
+
       const res = await fetch(`${API}/events/${eventId}`, {
         method: "PUT",
         headers,
@@ -190,7 +258,7 @@ export default function EditEventDialog({
     <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) resetAll(); }}>
       <DialogTrigger asChild>
         {trigger ? trigger : (
-          <Button className="gap-2 rounded-2xl"><CalendarCheck2 className="h-4 w-4"/> Editar evento</Button>
+          <Button className="gap-2 rounded-2xl"><CalendarCheck2 className="h-4 w-4" /> Editar evento</Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl">
@@ -247,15 +315,25 @@ export default function EditEventDialog({
             <div className="md:col-span-2 space-y-3 border-t pt-4">
               <div className="flex items-center gap-2">
                 <Checkbox id="chgaddr" checked={changeAddress} onCheckedChange={(v) => setChangeAddress(Boolean(v))} />
-                <Label htmlFor="chgaddr" className="cursor-pointer flex items-center gap-2"><MapPin className="h-4 w-4"/> Cambiar dirección</Label>
+                <Label htmlFor="chgaddr" className="cursor-pointer flex items-center gap-2"><MapPin className="h-4 w-4" /> Cambiar dirección</Label>
               </div>
 
               {changeAddress && (
                 <div className="grid grid-cols-1 gap-4">
                   <LocationCascade
-                    apiBaseUrl={API}
+                    proxyBaseUrl="/api/georef"
+                    geocodeBaseUrl="/api/geocode/search"
                     className="w-full"
-                    onChange={(loc) => setIdCity(loc.idCity ? String(loc.idCity) : "")}
+                    onChange={(val) => {
+                      setLoc({
+                        provinceId: val.provinceId ?? null,
+                        provinceName: val.provinceName ?? null,
+                        municipioId: val.municipioId ?? null,
+                        municipioName: val.municipioName ?? null,
+                        idCity: val.idCity ?? null,
+                      });
+                      setIdCity(val.idCity ? String(val.idCity) : "");
+                    }}
                   />
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

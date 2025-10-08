@@ -35,7 +35,7 @@ export function useBandInvite(bandId: number) {
 
       setInviting(true);
       try {
-        const res = await fetch(`${API_URL}/bands/${bandId}/invites`, {
+        const res = await fetch(`${API_URL}/band-invites/${bandId}/invites`, {
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json", Accept: "application/json" },

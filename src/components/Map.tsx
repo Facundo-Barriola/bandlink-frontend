@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@/app/context/userContext";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
+import { MapPin, Users, Music2, CalendarDays, Wifi, LocateFixed } from "lucide-react";
 
 mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
@@ -58,6 +59,36 @@ function circlePolygon(lon: number, lat: number, radiusMeters: number, steps = 6
     geometry: { type: "Polygon", coordinates: [coords] },
     properties: {},
   } as GeoJSON.Feature;
+}
+
+// ---------- Chips / Switch (UI helpers) ----------
+function Chip({
+  active, onClick, children, className = "",
+}: { active: boolean; onClick: () => void; children: React.ReactNode; className?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`h-8 px-3 inline-flex items-center gap-2 rounded-full border text-sm transition
+        ${active ? "bg-[#65558F] text-white border-[#65558F]" : "bg-white/80 hover:bg-white border-gray-200 text-gray-700"} ${className}`}
+      aria-pressed={active}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Switch({
+  checked, onChange, label,
+}: { checked: boolean; onChange: (v: boolean) => void; label: React.ReactNode }) {
+  return (
+    <label className="inline-flex items-center gap-2 cursor-pointer select-none">
+      <span className="text-sm text-gray-700">{label}</span>
+      <span className={`w-10 h-6 rounded-full p-0.5 transition ${checked ? "bg-[#65558F]" : "bg-gray-300"}`}>
+        <span className={`block w-5 h-5 bg-white rounded-full shadow-sm transition ${checked ? "translate-x-4" : ""}`} />
+      </span>
+      <input className="sr-only" type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+    </label>
+  );
 }
 
 // ========= Componente =========
@@ -126,7 +157,7 @@ export default function Map({
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: "mapbox://styles/mapbox/streets-v12",
-      center: [-58.3816, -34.6037], // arranca en CABA; luego recentra con userPos
+      center: [-58.3816, -34.6037],
       zoom: 12,
     });
     mapRef.current = map;
@@ -150,7 +181,7 @@ export default function Map({
         source: "me",
         paint: {
           "circle-radius": 8,
-          "circle-color": "#1d4ed8",           // azul por defecto
+          "circle-color": "#1d4ed8",
           "circle-stroke-width": 2,
           "circle-stroke-color": "#fff",
         },
@@ -218,6 +249,15 @@ export default function Map({
       (t === "event" && showEvents);
     return allPois.filter((p) => byType(p.type) && haversineKm(userPos, p.location) <= radiusKm);
   }, [allPois, userPos, radiusKm, showMusicians, showStudios, showEvents]);
+
+  const sortedNearby = useMemo(() => {
+    const list = filteredNearby.map((p) => ({
+      ...p,
+      distanceKm: userPos ? haversineKm(userPos, p.location) : null,
+    }));
+    list.sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity));
+    return list as (POI & { distanceKm: number | null })[];
+  }, [filteredNearby, userPos]);
 
   // ----- Actualizar fuentes (me, search-area, nearby) -----
   useEffect(() => {
@@ -310,7 +350,7 @@ export default function Map({
         filter: ["!", ["has", "point_count"]],
         paint: {
           "circle-radius": 6,
-          "circle-color": "#9333ea", // violeta usuarios live
+          "circle-color": "#9333ea",
           "circle-stroke-width": 1.5,
           "circle-stroke-color": "#fff",
         },
@@ -348,13 +388,11 @@ export default function Map({
     }
   }, [shareLive]);
 
-  // ----- Publicar presencia cada 10s si estoy compartiendo -----
+  // ----- Push de presencia -----
   useEffect(() => {
     if (!shareLive || !userPos || !ready) return;
     const idUser = user?.idUser ?? 0;
     if (!idUser) return;
-
-    // filtra lecturas imprecisas (>100m)
     if ((userPos.accuracy ?? 9999) > 1000) return;
 
     let cancelled = false;
@@ -419,52 +457,134 @@ export default function Map({
     return () => { cancelled = true; clearTimeout(timer); };
   }, [userPos, radiusKm, shareLive, user?.idUser, API]);
 
+  // ----- Helpers UI -----
+  const focusPoi = (p: POI) => {
+    const map = mapRef.current; if (!map) return;
+    map.easeTo({ center: [p.location.lon, p.location.lat], zoom: 14, duration: 600 });
+  };
+
   // ========= UI =========
   return (
-    <div className="flex flex-col gap-3">
-      {/* Controles */}
-      <div className="flex flex-wrap items-center gap-3 text-sm">
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={showMusicians} onChange={(e) => setShowMusicians(e.target.checked)} />
-          Músicos
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={showStudios} onChange={(e) => setShowStudios(e.target.checked)} />
-          Salas
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="checkbox" checked={showEvents} onChange={(e) => setShowEvents(e.target.checked)} />
-          Eventos
-        </label>
-
-        <label className="flex items-center gap-2 ml-4">
-          <input type="checkbox" checked={shareLive} onChange={(e) => setShareLive(e.target.checked)} />
-          Compartir mi ubicación (en vivo)
-        </label>
-
-        <div className="flex items-center gap-2 ml-4">
-          <span>Radio:</span>
-          <input
-            type="range"
-            min={1}
-            max={15}
-            step={1}
-            value={radiusKm}
-            onChange={(e) => setRadiusKm(Number(e.target.value))}
-          />
-          <b>{radiusKm} km</b>
+    <div className="mx-auto max-w-7xl px-4 py-6 space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-[#65558F]">Descubrir cerca</h1>
+          <p className="text-sm text-muted-foreground">
+            Filtrá músicos, salas y eventos por radio de búsqueda. Compartí tu ubicación para aparecer en vivo.
+          </p>
         </div>
-
-        <div className="ml-auto">
-          Encontrados: <b>{filteredNearby.length}</b>
+        <div className="hidden md:flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Encontrados</span>
+          <span className="px-2 py-1 rounded-full bg-violet-100 text-[#65558F] font-medium">{filteredNearby.length}</span>
         </div>
       </div>
 
-      {/* Mapa */}
-      <div
-        ref={mapContainerRef}
-        style={{ width: "100%", height: "500px", borderRadius: "8px", overflow: "hidden" }}
-      />
+      <div className="grid lg:grid-cols-[1fr,360px] gap-4">
+        {/* MAPA + Overlay de controles */}
+        <div className="relative rounded-2xl border bg-background shadow-sm overflow-hidden">
+          {/* Overlay de controles */}
+          <div className="absolute z-10 top-3 left-3 right-3 md:right-auto">
+            <div className="backdrop-blur bg-white/80 border rounded-xl shadow-sm p-2 md:p-3 flex flex-wrap items-center gap-2">
+              <Chip active={showMusicians} onClick={() => setShowMusicians(v => !v)}>
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                <Users className="w-4 h-4" /><span>Músicos</span>
+              </Chip>
+              <Chip active={showStudios} onClick={() => setShowStudios(v => !v)}>
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                <Music2 className="w-4 h-4" /><span>Salas</span>
+              </Chip>
+              <Chip active={showEvents} onClick={() => setShowEvents(v => !v)}>
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                <CalendarDays className="w-4 h-4" /><span>Eventos</span>
+              </Chip>
+
+              <div className="hidden md:block w-px h-6 bg-gray-200 mx-1" />
+
+              <Switch
+                checked={shareLive}
+                onChange={setShareLive}
+                label={<span className="inline-flex items-center gap-1"><Wifi className="w-4 h-4" /> Compartir en vivo</span>}
+              />
+
+              <div className="hidden md:block w-px h-6 bg-gray-200 mx-1" />
+
+              <div className="flex items-center gap-2 ml-auto md:ml-0 w-full md:w-auto">
+                <span className="text-sm text-gray-700">Radio</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={15}
+                  step={1}
+                  value={radiusKm}
+                  onChange={(e) => setRadiusKm(Number(e.target.value))}
+                  className="w-40 accent-[#65558F]"
+                />
+                <span className="text-sm font-medium text-[#65558F]">{radiusKm} km</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Mapa */}
+          <div
+            ref={mapContainerRef}
+            style={{ width: "100%", height: "560px" }}
+          />
+
+          {/* Footer overlay: mi ubicación + precisión */}
+          <div className="absolute bottom-3 left-3 right-3 md:right-auto z-10">
+            <div className="backdrop-blur bg-white/80 border rounded-xl shadow-sm px-3 py-2 text-xs text-gray-700 flex items-center gap-2">
+              <LocateFixed className="w-4 h-4 text-[#65558F]" />
+              <span>Mi ubicación: </span>
+              <span className="font-medium">{userPos ? `${userPos.lat.toFixed(4)}, ${userPos.lon.toFixed(4)}` : "—"}</span>
+              <span className="text-gray-500">· Precisión: {userPos?.accuracy ? `${Math.round(userPos.accuracy)} m` : "—"}</span>
+              <span className="ml-auto hidden md:inline">POIs en radio: <b>{filteredNearby.length}</b></span>
+            </div>
+          </div>
+        </div>
+
+        {/* Panel lateral de resultados */}
+        <aside className="rounded-2xl border bg-background shadow-sm p-3 md:p-4 max-h-[560px] overflow-auto">
+          <div className="flex items-center justify-between mb-2">
+            <div className="font-semibold text-[#65558F]">Resultados</div>
+            <div className="text-xs text-muted-foreground">Ordenados por cercanía</div>
+          </div>
+          {sortedNearby.length === 0 ? (
+            <div className="text-sm text-muted-foreground p-3 rounded-lg border bg-muted/30">
+              No hay resultados dentro de {radiusKm} km.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {sortedNearby.map((p) => (
+                <li key={`${p.type}-${p.id}`}
+                    className="p-3 rounded-xl border hover:shadow-sm transition cursor-pointer group"
+                    onClick={() => focusPoi(p)}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${p.type === "musician" ? "bg-red-500" : p.type === "studio" ? "bg-emerald-500" : "bg-amber-500"}`} />
+                      <div className="font-medium">{p.name}</div>
+                    </div>
+                    <div className="text-xs text-muted-foreground flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5" />
+                      {p.distanceKm != null ? `${p.distanceKm.toFixed(1)} km` : "—"}
+                    </div>
+                  </div>
+                  <div className="mt-1">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] border
+                      ${p.type === "musician" ? "bg-red-50 text-red-700 border-red-200" :
+                         p.type === "studio" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                         "bg-amber-50 text-amber-700 border-amber-200"}`}
+                    >
+                      {p.type === "musician" ? "Músico/a" : p.type === "studio" ? "Sala" : "Evento"}
+                    </span>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

@@ -35,7 +35,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     const [user, setUser] = useState<AppUser>(null);
     const [ready, setReady] = useState(false);
 
-
     useEffect(() => {
         (async () => {
             try {
@@ -48,6 +47,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
                 } else {
                     setUser(null);
                 }
+
             } catch (e) {
                 setUser(null);
             } finally {
