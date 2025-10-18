@@ -12,7 +12,7 @@ const VAPID = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "";
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState("/discover");
+  const [active, setActive] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const router = useRouter();
   const pathname = usePathname();
@@ -23,7 +23,7 @@ export default function Navbar() {
   const menuRef = useRef<HTMLDivElement>(null);
   const items = [
     { label: "Discover", href: "/discover" },
-    { label: "Request", href: "/request" },
+    { label: "Inbox", href: `/${user?.idUser}/chat` },
     { label: "My Events", href: "/events" },
     { label: "Connections", href: "/connections" },
   ];
@@ -79,7 +79,7 @@ export default function Navbar() {
             onMouseLeave: () => setHovered(null),
             onClick: () => { setActive(item.href), router.push(item.href) },
           }))}
-          activeHref={hovered || active}
+          activeHref={hovered ?? active ?? undefined}
           baseColor="#EADDFF"
           pillColor="#65558F"
           hoveredPillTextColor="#EADDFF"
@@ -107,6 +107,10 @@ export default function Navbar() {
                 <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]"
                   onClick={() => router.push(`/settings/${user.idUser}`)}>
                   Configuración
+                </button>
+                  <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]"
+                  onClick={() => router.push(`/faqs`)}>
+                  Ayuda
                 </button>
                 <button className="block w-full text-left px-4 py-2 text-[#65558F] hover:bg-[#EADDFF]"
                   onClick={handleLogout}>

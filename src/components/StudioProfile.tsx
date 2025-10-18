@@ -514,40 +514,6 @@ export default function StudioProfile({ viewUserId }: { viewUserId?: number }) {
           )}
         </div>
       </section>
-
-      {/* Eventos en el estudio (por dirección) */}
-      <section>
-        <h2 className="text-[#65558F] text-lg font-semibold mb-3">Eventos en el estudio</h2>
-        <div className="space-y-4">
-          {eventsAtStudio.length ? (
-            eventsAtStudio.map((e) => (
-              <Card key={`event-${e.idEvent}`} className="rounded-2xl shadow-sm transition hover:shadow-md">
-                <CardContent className="p-5 flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h3 className="font-medium truncate">{e.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      <CalendarDays className="inline mr-1 h-4 w-4" />
-                      {new Date(e.startsAt).toLocaleString()} {e.endsAt ? `— ${new Date(e.endsAt).toLocaleString()}` : ""}
-                    </p>
-                    {e.description && <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{e.description}</p>}
-                    <div className="flex gap-2 mt-2">
-                      <Badge variant="outline" className="rounded-full capitalize">{e.visibility}</Badge>
-                      {e.capacityMax != null && <Badge variant="secondary" className="rounded-full">Capacidad: {e.capacityMax}</Badge>}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 shrink-0">
-                    <Button size="sm" onClick={() => router.push(`/events/${e.idEvent}`)}>Ver</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          ) : (
-            <Card className="rounded-2xl shadow-sm">
-              <CardContent className="p-6 text-muted-foreground">No hay eventos próximos en este estudio.</CardContent>
-            </Card>
-          )}
-        </div>
-      </section>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Share2, Pencil, Trash2, CalendarDays } from "lucide-react";
+import { Share2, Trash2, CalendarDays } from "lucide-react";
 import { useUser } from "@/app/context/userContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,44 +54,37 @@ export default function MyEventsList() {
   const [items, setItems] = useState<EventLite[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const ac = new AbortController();
-    let alive = true;
+  const loadMyEvents = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API}/events/myEvents`, {
+        method: "GET",
+        credentials: "include",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
 
-    (async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const res = await fetch(`${API}/events/myEvents`, {
-          method: "GET",
-          credentials: "include",
-          headers: { Accept: "application/json" },
-          cache: "no-store",
-          signal: ac.signal,
-        });
-
-        if (res.status === 401 || res.status === 403) {
-          if (alive) router.push("/login");
-          return;
-        }
-
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
-
-        const list: EventLite[] = (json?.data?.items ?? json?.data ?? json) as EventLite[];
-        if (alive) setItems(Array.isArray(list) ? list : []);
-      } catch (e: any) {
-        if (alive) setError(e?.message || "No se pudieron cargar tus eventos");
-      } finally {
-        if (alive) setLoading(false);
+      if (res.status === 401 || res.status === 403) {
+        router.push("/login");
+        return;
       }
-    })();
 
-    return () => {
-      alive = false;
-      ac.abort();
-    };
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || `HTTP ${res.status}`);
+
+      const list: EventLite[] = (json?.data?.items ?? json?.data ?? json) as EventLite[];
+      setItems(Array.isArray(list) ? list : []);
+    } catch (e: any) {
+      setError(e?.message || "No se pudieron cargar tus eventos");
+    } finally {
+      setLoading(false);
+    }
   }, [router]);
+
+  useEffect(() => {
+    loadMyEvents();
+  }, [loadMyEvents]);
 
   const empty = !loading && items.length === 0;
 
@@ -136,43 +129,63 @@ export default function MyEventsList() {
   }
 
   return (
-    <div className="w-full max-w-4xl mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Mis eventos</h1>
-        <Button className="rounded-xl" onClick={() => router.push("/events/create")}>
-          Crear evento
-        </Button>
-      </div>
-
+    <div className="w-full max-w-5xl mx-auto p-6 space-y-6">
       <Tabs defaultValue="mine" className="space-y-6">
-        <TabsList className="rounded-xl bg-muted/40 p-1">
-          <TabsTrigger value="mine" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+        <TabsList
+          className="
+            bg-[#F4F1FB]
+            border border-[#E8E1FF]
+            rounded-2xl p-1
+            shadow-sm
+          "
+        >
+          <TabsTrigger
+            value="mine"
+            className="
+              rounded-xl px-4 py-2 text-sm
+              text-[#65558F]/75
+              data-[state=active]:bg-[#65558F]
+              data-[state=active]:text-white
+              data-[state=active]:shadow
+              transition-colors
+            "
+          >
             Creados por mí
           </TabsTrigger>
-          <TabsTrigger value="attending" className="rounded-lg data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+          <TabsTrigger
+            value="attending"
+            className="
+              rounded-xl px-4 py-2 text-sm
+              text-[#65558F]/75
+              data-[state=active]:bg-[#65558F]
+              data-[state=active]:text-white
+              data-[state=active]:shadow
+              transition-colors
+            "
+          >
             Voy a asistir
           </TabsTrigger>
         </TabsList>
 
-        {/* TAB: Mis eventos (tu lista actual) */}
+        {/* TAB: Mis eventos */}
         <TabsContent value="mine" className="space-y-6">
           {loading && (
-            <div className="space-y-3 animate-pulse">
-              <div className="h-24 bg-muted/60 rounded-2xl" />
-              <div className="h-24 bg-muted/60 rounded-2xl" />
-              <div className="h-24 bg-muted/60 rounded-2xl" />
+            <div className="space-y-3">
+              <div className="h-24 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
+              <div className="h-24 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
+              <div className="h-24 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
             </div>
           )}
 
           {error && !loading && (
-            <Card className="rounded-2xl">
-              <CardContent className="p-6 text-sm text-destructive">{error}</CardContent>
+            <Card className="rounded-2xl border border-red-200/70 bg-red-50/60">
+              <CardContent className="p-6 text-sm text-red-700">{error}</CardContent>
             </Card>
           )}
 
           {empty && (
-            <Card className="rounded-2xl">
-              <CardContent className="p-8 text-sm text-muted-foreground">
+            <Card className="rounded-2xl border border-dashed border-[#CBB8FF] bg-[#F8F6FF]">
+              <CardContent className="p-8 text-sm text-[#65558F]">
                 No tenés eventos creados todavía. ¡Creá el primero!
               </CardContent>
             </Card>
@@ -188,29 +201,47 @@ export default function MyEventsList() {
                   : null;
 
                 return (
-                  <Card key={ev.idEvent} className="rounded-2xl">
-                    <CardHeader className="p-4 pb-2">
+                  <Card
+                    key={ev.idEvent}
+                    className="
+                      rounded-2xl
+                      border border-[#E9E6F7]
+                      hover:shadow-md transition-shadow
+                      bg-white
+                    "
+                  >
+                    <CardHeader className="p-4 pb-2 border-b border-[#F0ECFF]">
                       <div className="flex items-start justify-between gap-3">
-                        <CardTitle className="text-lg font-semibold leading-tight">
+                        <CardTitle className="text-lg font-semibold leading-tight text-[#2A2140]">
                           {ev.name}
                         </CardTitle>
-                        <Badge variant={ev.visibility === "private" ? "secondary" : "default"}>
+                        <Badge
+                          className={
+                            ev.visibility === "private"
+                              ? "bg-[#EDE9FE] text-[#5B21B6] border border-[#DDD6FE]"
+                              : "bg-[#E9E6F7] text-[#65558F] border border-[#DAD4F0]"
+                          }
+                        >
                           {visLabel}
                         </Badge>
                       </div>
                     </CardHeader>
 
-                    <CardContent className="p-4 pt-0">
-                      <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                    <CardContent className="p-4 pt-3">
+                      <div className="flex flex-wrap items-center gap-3 text-sm text-[#5A5470]">
                         <div className="flex items-center gap-2">
-                          <CalendarDays className="h-4 w-4" />
-                          <span>{toDayHM(ev.startsAt)}</span>
+                          <CalendarDays className="h-4 w-4 text-[#65558F]" />
+                          <span className="font-medium text-[#3A2E5E]">{toDayHM(ev.startsAt)}</span>
                         </div>
-                        {addrLine && <span className="text-xs">· {addrLine}</span>}
+                        {addrLine && (
+                          <span className="text-xs text-[#6D5FA4] bg-[#F4F1FB] border border-[#E8E1FF] px-2 py-0.5 rounded-full">
+                            {addrLine}
+                          </span>
+                        )}
                       </div>
 
                       {ev.description && (
-                        <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
+                        <p className="mt-2 text-sm text-[#5A5470]">
                           {ev.description}
                         </p>
                       )}
@@ -220,8 +251,23 @@ export default function MyEventsList() {
                           eventId={ev.idEvent}
                           onUpdated={(updated) => {
                             console.log("Evento actualizado", updated);
+                            loadMyEvents();
                           }}
-                          trigger={<Button variant="outline">Editar</Button>}
+                          trigger={
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="
+                                rounded-xl
+                                border-[#C8BEEA]
+                                text-[#65558F]
+                                hover:bg-[#65558F]
+                                hover:text-white
+                              "
+                            >
+                              Editar
+                            </Button>
+                          }
                         />
 
                         <Button
@@ -234,7 +280,16 @@ export default function MyEventsList() {
                           Eliminar
                         </Button>
 
-                        <Button size="sm" className="rounded-xl" onClick={() => handleShare(ev)}>
+                        <Button
+                          size="sm"
+                          className="
+                            rounded-xl
+                            bg-[#F0ECFF] text-[#4F3D8B]
+                            hover:bg-[#E6DEFF]
+                            border border-[#DDD3FF]
+                          "
+                          onClick={() => handleShare(ev)}
+                        >
                           <Share2 className="h-4 w-4 mr-2" />
                           Compartir
                         </Button>
@@ -242,7 +297,11 @@ export default function MyEventsList() {
                         <Button
                           variant="secondary"
                           size="sm"
-                          className="rounded-xl"
+                          className="
+                            rounded-xl
+                            bg-[#65558F] text-white
+                            hover:bg-[#57497B]
+                          "
                           onClick={() => router.push(`/events/${ev.idEvent}`)}
                         >
                           Ver
@@ -256,7 +315,7 @@ export default function MyEventsList() {
           )}
         </TabsContent>
 
-        {/* TAB: Voy a asistir (nuevo componente) */}
+        {/* TAB: Voy a asistir */}
         <TabsContent value="attending">
           <AttendingEventsList />
         </TabsContent>

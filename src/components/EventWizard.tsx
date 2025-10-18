@@ -13,23 +13,100 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Loader2, CalendarPlus, Users, Shield } from "lucide-react";
-import LocationCascade, { LocationCascadeValue } from "@/components/LocationCascade";
 
-export type CityOption = { idCity: number; name: string };
+function MapboxSearchBox(props: {
+  accessToken: string;
+  placeholder?: string;
+  country?: string;
+  language?: string;
+  limit?: number;
+  types?: string;
+  className?: string;
+  onRetrieve?: (ev: any) => void;
+}) {
+  const { accessToken, placeholder, country = "AR", language = "es", limit = 5, types = "address,poi", className, onRetrieve } = props;
+  const hostRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    let el: any;
+    let mounted = true;
+
+    (async () => {
+      // Registra el web component en el navegador
+      await import("@mapbox/search-js-web");
+      if (!mounted || !hostRef.current) return;
+
+      // Crear el custom element y setear props/attrs
+      el = document.createElement("mapbox-search-box");
+      el.setAttribute("access-token", accessToken);
+      el.setAttribute("country", country);
+      el.setAttribute("language", language);
+      el.setAttribute("limit", String(limit));
+      el.setAttribute("types", types);
+      if (placeholder) el.setAttribute("placeholder", placeholder);
+
+      // Listener para cuando el usuario selecciona un resultado
+      const handleRetrieve = (ev: any) => onRetrieve?.(ev);
+      el.addEventListener("retrieve", handleRetrieve);
+
+      // Limpiar contenedor y montar
+      hostRef.current.innerHTML = "";
+      hostRef.current.appendChild(el);
+
+      // Cleanup
+      return () => {
+        el?.removeEventListener("retrieve", handleRetrieve);
+      };
+    })();
+
+    return () => {
+      mounted = false;
+      // desmontar
+      if (hostRef.current) hostRef.current.innerHTML = "";
+    };
+  }, [accessToken, country, language, limit, types, placeholder, onRetrieve]);
+
+  return <div ref={hostRef} className={className} />;
+}
+
+function getCityAndProvince(f: any): { city: string | null; province: string | null; neighborhood: string | null } {
+  const props = f?.properties ?? {};
+  const ctxObj = props?.context ?? {};                    // <- objeto: { region: {name}, place: {name}, ... }
+  const ctxArr = Array.isArray(f?.context) ? f.context :  // <- array clásico: [{id:'region.x', text:'...' }, ...]
+                 (Array.isArray(props?.context) ? props.context : []);
+
+  const nameOf = (x: any) => (x?.name ?? x?.text ?? null);
+  const findInArr = (prefix: string) => {
+    const it = ctxArr.find((c: any) => String(c?.id || "").startsWith(prefix));
+    return nameOf(it);
+  };
+  const first = (...vals: any[]) => vals.find(v => typeof v === "string" && v.trim()) ?? null;
+
+  const city = first(
+    props.place, props.locality, props.city,
+    nameOf((ctxObj as any).place), nameOf((ctxObj as any).locality), nameOf((ctxObj as any).district),
+    findInArr("place."), findInArr("locality."), findInArr("district.")
+  );
+
+  const province = first(
+    props.region, props.state,
+    nameOf((ctxObj as any).region),
+    findInArr("region.")
+  );
+
+  const neighborhood = first(
+    props.neighborhood,
+    nameOf((ctxObj as any).neighborhood),
+    findInArr("neighborhood.")
+  );
+  console.log("Parsed location:", { city, province, neighborhood });
+  return { city, province, neighborhood };
+}
 
 export type CreateEventDialogProps = {
   trigger?: React.ReactNode;
   onCreated?: (event: any) => void;
-  apiBaseUrl?: string;   // tu backend (p.ej. http://localhost:4000)
-  cities?: CityOption[];
-};
-
-type SelectedLoc = {
-  provinceId?: string | null;
-  provinceName?: string | null;
-  municipioId?: string | null;
-  municipioName?: string | null;
-  idCity?: number | null;
+  apiBaseUrl?: string;   // p.ej. http://localhost:4000
 };
 
 export default function EventWizard({
@@ -40,15 +117,12 @@ export default function EventWizard({
   const [open, setOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [loc, setLoc] = React.useState<SelectedLoc>({});
-
+  const formRef = React.useRef<HTMLFormElement | null>(null);
   const API = React.useMemo(
     () => apiBaseUrl || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000",
     [apiBaseUrl]
   );
-
-  // Si tus proxys están en Next.js (App Router):
-  const GEO_PROXY = "/api/georef";
+  const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
   // ---- form state
   const [name, setName] = React.useState("");
@@ -56,27 +130,145 @@ export default function EventWizard({
   const [visibility, setVisibility] = React.useState<"public" | "private">("public");
   const [capacityMax, setCapacityMax] = React.useState<string>("");
 
-  const [idCity, setIdCity] = React.useState<string>("");
   const [street, setStreet] = React.useState("");
   const [streetNum, setStreetNum] = React.useState<string>("");
   const [addressDesc, setAddressDesc] = React.useState("");
+  const [cityName, setCityName] = React.useState<string | null>(null);
+  const [provinceName, setProvinceName] = React.useState<string | null>(null);
+  const [neighborhoodName, setNeighborhoodName] = React.useState<string | null>(null);
+
+  // Coordenadas capturadas
+  const [lat, setLat] = React.useState<number | null>(null);
+  const [lon, setLon] = React.useState<number | null>(null);
 
   const [startsAtLocal, setStartsAtLocal] = React.useState("");
   const [endsAtLocal, setEndsAtLocal] = React.useState("");
+
+  React.useEffect(() => {
+    let coll: any; // AddressAutofillCollection
+
+    (async () => {
+      // carga dinámica segura en Next.js
+      const mod = await import("@mapbox/search-js-web");
+      // crea la colección que “observa” el formulario
+      coll = mod.autofill({
+        accessToken: MAPBOX_TOKEN,
+        options: { country: "AR", language: "es", limit: 5 },
+      });
+
+      if (formRef.current) coll.observe(formRef.current);
+
+      // cuando el usuario selecciona una sugerencia:
+      const onRetrieve = (ev: any) => {
+        const f =
+          ev?.detail?.feature ||
+          ev?.detail?.features?.[0] ||
+          null;
+        const coords = Array.isArray(f?.geometry?.coordinates)
+          ? f.geometry.coordinates
+          : null;
+
+        if (coords && typeof coords[0] === "number" && typeof coords[1] === "number") {
+          setLon(coords[0]);
+          setLat(coords[1]);
+        }
+
+        const line =
+          f?.properties?.address_line1 ||
+          f?.properties?.name ||
+          f?.place_name ||
+          "";
+        const m = String(line).match(/^(.+?)\s+(\d+[A-Za-z\-]*)\b/);
+        if (m) {
+          if (!street) setStreet(m[1]);
+          if (!streetNum) setStreetNum(m[2]);
+        }
+        const { city, province, neighborhood } = getCityAndProvince(f);
+        setCityName(city);
+        setProvinceName(province);
+        setNeighborhoodName(neighborhood)
+      };
+
+      const onSuggest = (_ev: any) => {
+
+      };
+
+      coll.addEventListener("retrieve", onRetrieve);
+      coll.addEventListener("suggest", onSuggest);
+
+      return () => {
+        coll?.removeEventListener("retrieve", onRetrieve);
+        coll?.removeEventListener("suggest", onSuggest);
+        coll?.remove?.();
+      };
+    })();
+  }, [MAPBOX_TOKEN]);
 
   function resetForm() {
     setName("");
     setDescription("");
     setVisibility("public");
     setCapacityMax("");
-    setIdCity("");
     setStreet("");
     setStreetNum("");
     setAddressDesc("");
     setStartsAtLocal("");
     setEndsAtLocal("");
+    setLat(null);
+    setLon(null);
     setError(null);
-    setLoc({});
+  }
+
+  async function geocodeBasic(q: string): Promise<{ lat: number; lon: number } | null> {
+    try {
+      const r = await fetch(`/api/geocode/search?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+      const json = await r.json().catch(() => null);
+      const f = Array.isArray(json?.features) ? json.features[0] : null;
+      if (!f) return null;
+
+      const lon =
+        typeof f.lon === "number" ? f.lon :
+          Array.isArray(f.center) ? f.center[0] :
+            Array.isArray(f.geometry?.coordinates) ? f.geometry.coordinates[0] : null;
+
+      const lat =
+        typeof f.lat === "number" ? f.lat :
+          Array.isArray(f.center) ? f.center[1] :
+            Array.isArray(f.geometry?.coordinates) ? f.geometry.coordinates[1] : null;
+
+      if (typeof lat === "number" && typeof lon === "number") return { lat, lon };
+    } catch { }
+    return null;
+  }
+
+  function handleRetrieve(ev: any) {
+    const f = ev?.detail?.features?.[0];
+    if (!f) return;
+
+    // coordenadas [lon, lat]
+    const coords = Array.isArray(f.geometry?.coordinates) ? f.geometry.coordinates : null;
+    if (coords && typeof coords[0] === "number" && typeof coords[1] === "number") {
+      setLon(coords[0]);
+      setLat(coords[1]);
+    }
+
+    // Heurística simple para calle/número desde address_line1 o place_name
+    const line =
+      f?.properties?.address_line1 ||
+      f?.properties?.name ||
+      f?.place_name ||
+      "";
+    const m = String(line).match(/^(.+?)\s+(\d+[A-Za-z\-]*)\b/);
+    if (m) {
+      if (!street) setStreet(m[1]);
+      if (!streetNum) setStreetNum(m[2]);
+    }
+
+    const { city, province, neighborhood } = getCityAndProvince(f);
+    setCityName(city);
+    setProvinceName(province);
+    setNeighborhoodName(neighborhood);
+    console.log("Parsed city/province:", city, province);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -86,19 +278,19 @@ export default function EventWizard({
     if (!name.trim()) return setError("El nombre es obligatorio.");
     if (!startsAtLocal) return setError("La fecha/hora de inicio es obligatoria.");
     if (!street.trim() || !streetNum) return setError("Faltan datos de la dirección (calle y número).");
-    if (!loc?.provinceName || !loc?.municipioName) return setError("Seleccioná provincia y ciudad/municipio.");
-    if (!loc?.provinceName || !loc?.municipioName) return setError("Seleccioná provincia y ciudad/municipio.");
-    if (!idCity && !loc?.municipioName) return setError("Seleccioná la ciudad/municipio o escribila.");
 
     const startsAtIso = new Date(startsAtLocal).toISOString();
     const endsAtIso = endsAtLocal ? new Date(endsAtLocal).toISOString() : undefined;
 
-    const coords = await geocodeAR({
-      provinceName: loc.provinceName!,
-      municipioName: loc.municipioName!,
-      street,
-      number: streetNum,
-    });
+    // Fallback por si el usuario no eligió de la lista
+    let finalLat = lat;
+    let finalLon = lon;
+    if (finalLat == null || finalLon == null) {
+      const q = `${street} ${streetNum}, Argentina`;
+      const coords = await geocodeBasic(q);
+      finalLat = coords?.lat ?? null;
+      finalLon = coords?.lon ?? null;
+    }
 
     const payload = {
       name: name.trim(),
@@ -106,23 +298,20 @@ export default function EventWizard({
       visibility,
       capacityMax: capacityMax ? Number(capacityMax) : null,
       address: {
-        idCity: Number(idCity),
         street: street.trim(),
         streetNum: Number(streetNum),
         addressDesc: addressDesc.trim() || null,
-        provinceName: loc.provinceName,
-        municipioName: loc.municipioName,
-        georef: {
-          provinceId: loc.provinceId,
-          municipioId: loc.municipioId,
-        },
-        lat: coords?.lat ?? null,
-        lon: coords?.lon ?? null,
+        lat: finalLat,
+        lon: finalLon,
+        cityName,        
+        provinceName,
+        neighborhoodName,
       },
       startsAtIso,
       endsAtIso,
     };
-
+    const body = JSON.stringify(payload);
+    console.log("Creating event with", body);
     setLoading(true);
     try {
       const res = await fetch(`${API}/events`, {
@@ -142,39 +331,6 @@ export default function EventWizard({
       setLoading(false);
     }
   }
-
-  async function geocodeAR(opts: {
-    provinceName?: string | null;
-    municipioName?: string | null;
-    street?: string;
-    number?: string;
-  }): Promise<{ lat: number; lon: number } | null> {
-    const { provinceName, municipioName, street, number } = opts;
-    if (!provinceName || !street || !number) return null;
-    const q = `${street} ${number}, ${municipioName ?? ""}, ${provinceName}, Argentina`.replace(/\s+,/g, ",");
-
-    try {
-      const r = await fetch(`/api/geocode/search?q=${encodeURIComponent(q)}`, { cache: "no-store" });
-      if (!r.ok) return null;
-      const json = await r.json();
-      const f = Array.isArray(json?.features) ? json.features[0] : null;
-      if (f && typeof f.lat === "number" && typeof f.lon === "number") {
-        return { lat: f.lat, lon: f.lon };
-      }
-    } catch { }
-    return null;
-  }
-
-  const handleLocChange = React.useCallback((val: LocationCascadeValue) => {
-    setLoc({
-      provinceId: val.provinceId ?? null,
-      provinceName: val.provinceName ?? null,
-      municipioId: val.municipioId ?? null,
-      municipioName: val.municipioName ?? null,
-      idCity: val.idCity ?? null,
-    });
-    setIdCity(val.idCity ? String(val.idCity) : "");
-  }, []);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -228,28 +384,33 @@ export default function EventWizard({
               />
             </div>
 
+            {/* 🔎 Buscador Mapbox (inyectado) */}
             <div className="md:col-span-2">
-              <Label className="mb-1 block">Ubicación</Label>
-              <LocationCascade
-                proxyBaseUrl="/api/georef"
-                geocodeBaseUrl="/api/geocode/search"
+              <Label className="mb-1 block">Buscar dirección</Label>
+              <MapboxSearchBox
+                accessToken={MAPBOX_TOKEN}
+                placeholder="Escribí la dirección (ej. 'Av. Corrientes 1234')"
+                country="AR"
+                language="es"
+                limit={5}
+                types="address,poi"
                 className="w-full"
-                onChange={(val) => {
-                  setLoc({
-                    provinceId: val.provinceId ?? null,
-                    provinceName: val.provinceName ?? null,
-                    municipioId: val.municipioId ?? null,
-                    municipioName: val.municipioName ?? null,
-                    idCity: val.idCity ?? null,
-                  });
-                  setIdCity(val.idCity ? String(val.idCity) : "");
-                }}
+                onRetrieve={handleRetrieve}
               />
+              {(lat != null && lon != null) && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Coordenadas: <span className="font-mono">lat {lat.toFixed(6)}, lon {lon.toFixed(6)}</span>
+                </p>
+              )}
             </div>
 
+            {/* Campos manuales (se prellenan si se pudo parsear) */}
             <div className="space-y-2">
               <Label htmlFor="street">Calle</Label>
-              <Input id="street" placeholder="Av. Corrientes" value={street} onChange={(e) => setStreet(e.target.value)} />
+              <Input id="street" placeholder="Av. Corrientes"
+                name="street"
+                autoComplete="street-address"
+                value={street} onChange={(e) => setStreet(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label htmlFor="streetNum">Número</Label>

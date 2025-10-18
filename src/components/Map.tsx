@@ -77,6 +77,11 @@ function Chip({
   );
 }
 
+function debounce<T extends (...args: any[]) => void>(fn: T, ms = 300) {
+  let t: any;
+  return (...args: Parameters<T>) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+
 function Switch({
   checked, onChange, label,
 }: { checked: boolean; onChange: (v: boolean) => void; label: React.ReactNode }) {
@@ -117,6 +122,90 @@ export default function Map({
   const [liveUsers, setLiveUsers] = useState<LiveUser[]>([]);
 
   const API = useMemo(() => process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000", []);
+
+  const [studiosRemote, setStudiosRemote] = useState<POI[]>([]);
+  const [loadingStudios, setLoadingStudios] = useState(false);
+  const [studiosError, setStudiosError] = useState<string | null>(null);
+
+  const [eventsRemote, setEventsRemote] = useState<POI[]>([]);
+  const [loadingEvents, setLoadingEvents] = useState(false);
+  const [eventsError, setEventsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userPos) return;
+    let cancelled = false;
+
+    const run = async () => {
+      try {
+        setLoadingEvents(true);
+        setEventsError(null);
+
+        const url = new URL(`${API}/map/events/near`);
+        url.searchParams.set("lat", String(userPos.lat));
+        url.searchParams.set("lon", String(userPos.lon));
+        url.searchParams.set("radiusKm", String(radiusKm));
+
+        const res = await fetch(url.toString(), { credentials: "include" });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.ok) throw new Error(json?.error || "fetch_fail");
+
+        const list: POI[] = (json.data ?? []).map((e: any) => ({
+          id: e.idEvent,
+          type: "event" as const,
+          name: e.name ?? `Evento ${e.idEvent}`,
+          location: { lat: Number(e.lat), lon: Number(e.lon) },
+        }));
+
+        if (!cancelled) setEventsRemote(list);
+      } catch (e: any) {
+        if (!cancelled) setEventsError(e?.message ?? "Error cargando eventos");
+      } finally {
+        if (!cancelled) setLoadingEvents(false);
+      }
+    };
+
+    run();
+    return () => { cancelled = true; };
+  }, [API, userPos, radiusKm]);
+
+  useEffect(() => {
+    if (!userPos) return;
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        setLoadingStudios(true);
+        setStudiosError(null);
+
+        const url = new URL(`${API}/map/studios/near`);
+        url.searchParams.set("lat", String(userPos.lat));
+        url.searchParams.set("lon", String(userPos.lon));
+        url.searchParams.set("radiusKm", String(radiusKm));
+
+        const res = await fetch(url.toString(), { credentials: "include" });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json?.ok) throw new Error(json?.error || "fetch_fail");
+
+        const list: POI[] = (json.data ?? []).map((s: any) => ({
+          id: s.idUser,
+          type: "studio" as const,
+          name: s.displayName ?? `Sala ${s.idUser}`,
+          location: { lat: Number(s.lat), lon: Number(s.lon) },
+        }));
+
+        if (!cancelled) setStudiosRemote(list);
+      } catch (e: any) {
+        if (!cancelled) setStudiosError(e?.message ?? "Error cargando salas");
+      } finally {
+        if (!cancelled) setLoadingStudios(false);
+      }
+    };
+
+    const debounced = debounce(run, 300);
+    debounced();
+
+    return () => { cancelled = true; };
+  }, [API, userPos, radiusKm]);
 
   // ----- Geolocalización: mejor muestra (~5s) -----
   useEffect(() => {
@@ -240,15 +329,24 @@ export default function Map({
     return () => { try { map.remove(); } catch { } mapRef.current = null; initialized.current = false; };
   }, [initialRadiusKm]);
 
+  const combinedPois = useMemo(() => {
+    const others = (allPois ?? []).filter(p => p.type !== "studio" && p.type !== "event");
+    return [...others, ...studiosRemote, ...eventsRemote];
+  }, [allPois, studiosRemote, eventsRemote]);
+
   // ----- POIs filtrados por radio/checkboxes -----
-  const filteredNearby = useMemo(() => {
-    if (!userPos) return [];
-    const byType = (t: POIType) =>
-      (t === "musician" && showMusicians) ||
-      (t === "studio" && showStudios) ||
-      (t === "event" && showEvents);
-    return allPois.filter((p) => byType(p.type) && haversineKm(userPos, p.location) <= radiusKm);
-  }, [allPois, userPos, radiusKm, showMusicians, showStudios, showEvents]);
+const filteredNearby = useMemo(() => {
+  if (!userPos) return [];
+  const byType = (t: POIType) =>
+    (t === "musician" && showMusicians) ||
+    (t === "studio"   && showStudios)   ||
+    (t === "event"    && showEvents);
+
+  return combinedPois.filter(p =>
+    byType(p.type) &&
+    ((p.type === "studio" || p.type === "event") ? true : haversineKm(userPos, p.location) <= radiusKm)
+  );
+}, [combinedPois, userPos, radiusKm, showMusicians, showStudios, showEvents]);
 
   const sortedNearby = useMemo(() => {
     const list = filteredNearby.map((p) => ({
@@ -557,8 +655,8 @@ export default function Map({
             <ul className="space-y-2">
               {sortedNearby.map((p) => (
                 <li key={`${p.type}-${p.id}`}
-                    className="p-3 rounded-xl border hover:shadow-sm transition cursor-pointer group"
-                    onClick={() => focusPoi(p)}
+                  className="p-3 rounded-xl border hover:shadow-sm transition cursor-pointer group"
+                  onClick={() => focusPoi(p)}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
@@ -573,8 +671,8 @@ export default function Map({
                   <div className="mt-1">
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] border
                       ${p.type === "musician" ? "bg-red-50 text-red-700 border-red-200" :
-                         p.type === "studio" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
-                         "bg-amber-50 text-amber-700 border-amber-200"}`}
+                        p.type === "studio" ? "bg-emerald-50 text-emerald-700 border-emerald-200" :
+                          "bg-amber-50 text-amber-700 border-amber-200"}`}
                     >
                       {p.type === "musician" ? "Músico/a" : p.type === "studio" ? "Sala" : "Evento"}
                     </span>

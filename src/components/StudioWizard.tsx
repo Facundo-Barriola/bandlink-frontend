@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import Select, { OnChangeValue } from "react-select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,11 +35,13 @@ export type WizardCompletePayload = {
     idAddress: number | null;
     latitude: number | null;
     longitude: number | null;
-    address?: {                
-      idCity: number;
+    address?: {
       street: string;
       streetNum: number;
       addressDesc?: string | null;
+      provinceName?: string | null;
+      municipioName?: string | null;
+      barrioName?: string | null;
     };
   };
   studio: {
@@ -52,6 +54,88 @@ export type WizardCompletePayload = {
     rooms: RoomInput[];
   };
 };
+
+function MapboxSearchBox(props: {
+  accessToken: string;
+  placeholder?: string;
+  country?: string;
+  language?: string;
+  limit?: number;
+  types?: string;
+  className?: string;
+  onRetrieve?: (ev: any) => void;
+}) {
+  const { accessToken, placeholder, country = "AR", language = "es", limit = 5, types = "address,poi", className, onRetrieve } = props;
+  const hostRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let el: any;
+    let mounted = true;
+
+    (async () => {
+      await import("@mapbox/search-js-web");
+      if (!mounted || !hostRef.current) return;
+
+      el = document.createElement("mapbox-search-box");
+      el.setAttribute("access-token", accessToken);
+      el.setAttribute("country", country);
+      el.setAttribute("language", language);
+      el.setAttribute("limit", String(limit));
+      el.setAttribute("types", types);
+      if (placeholder) el.setAttribute("placeholder", placeholder);
+
+      const handleRetrieve = (ev: any) => onRetrieve?.(ev);
+      el.addEventListener("retrieve", handleRetrieve);
+
+      hostRef.current.innerHTML = "";
+      hostRef.current.appendChild(el);
+
+      return () => {
+        el?.removeEventListener("retrieve", handleRetrieve);
+      };
+    })();
+
+    return () => {
+      mounted = false;
+      if (hostRef.current) hostRef.current.innerHTML = "";
+    };
+  }, [accessToken, country, language, limit, types, placeholder, onRetrieve]);
+
+  return <div ref={hostRef} className={className} />;
+}
+
+function getCityAndProvince(f: any): { city: string | null; province: string | null; neighborhood: string | null } {
+  const props = f?.properties ?? {};
+  const ctxObj = props?.context ?? {};
+  const ctxArr = Array.isArray(f?.context) ? f.context : (Array.isArray(props?.context) ? props.context : []);
+
+  const nameOf = (x: any) => (x?.name ?? x?.text ?? null);
+  const findInArr = (prefix: string) => {
+    const it = ctxArr.find((c: any) => String(c?.id || "").startsWith(prefix));
+    return nameOf(it);
+  };
+  const first = (...vals: any[]) => vals.find(v => typeof v === "string" && v.trim()) ?? null;
+
+  const city = first(
+    props.place, props.locality, props.city,
+    nameOf((ctxObj as any).place), nameOf((ctxObj as any).locality), nameOf((ctxObj as any).district),
+    findInArr("place."), findInArr("locality."), findInArr("district.")
+  );
+
+  const province = first(
+    props.region, props.state,
+    nameOf((ctxObj as any).region),
+    findInArr("region.")
+  );
+
+  const neighborhood = first(
+    props.neighborhood,
+    nameOf((ctxObj as any).neighborhood),
+    findInArr("neighborhood.")
+  );
+
+  return { city, province, neighborhood };
+}
 
 const DAY_LABELS: Record<DayKey, string> = {
   mon: "Lunes", tue: "Martes", wed: "Miércoles",
@@ -67,6 +151,7 @@ export default function StudioWizard({
   onOpenChange: (v: boolean) => void;
   onComplete?: (payload: WizardCompletePayload) => void;
 }) {
+  const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
   const [step, setStep] = useState<Step>(1);
   const next = () => setStep((s): Step => (s === 1 ? 2 : s === 2 ? 3 : 4));
   const back = () => setStep((s): Step => (s === 4 ? 3 : s === 3 ? 2 : 1));
@@ -81,15 +166,13 @@ export default function StudioWizard({
   const [cancellationPolicy, setCancellationPolicy] = useState("");
 
   // Dirección
-  const [countries, setCountries] = useState<Country[]>([]);
-  const [provinces, setProvinces] = useState<Province[]>([]);
-  const [cities, setCities] = useState<City[]>([]);
-  const [countryId, setCountryId] = useState<number | "">("");
-  const [provinceId, setProvinceId] = useState<number | "">("");
-  const [cityId, setCityId] = useState<number | "">("");
   const [street, setStreet] = useState("");
-  const [streetNum, setStreetNum] = useState<number | "">("");
+  const [streetNum, setStreetNum] = useState<string>("");
   const [addressDesc, setAddressDesc] = useState("");
+
+  const [cityName, setCityName] = useState<string | null>(null);
+  const [provinceName, setProvinceName] = useState<string | null>(null);
+  const [neighborhoodName, setNeighborhoodName] = useState<string | null>(null);
 
   // Geo
   const [latitude, setLatitude] = useState<number | null>(null);
@@ -172,24 +255,6 @@ export default function StudioWizard({
       );
     }
 
-    // Países
-    (async () => {
-      try {
-        setErr(null);
-        setLoadingCountries(true);
-        const data = await apiGet<Country[]>("/address/countries");
-        if (!mounted) return;
-        data.sort((a, b) => a.countryDesc.localeCompare(b.countryDesc, "es"));
-        setCountries(data);
-        const ar = data.find((c) => c.countryCode?.toUpperCase() === "ARG");
-        if (ar) setCountryId(ar.idCountry);
-      } catch {
-        setErr("No se pudieron cargar los países");
-      } finally {
-        setLoadingCountries(false);
-      }
-    })();
-
     // Amenities
     (async () => {
       try {
@@ -208,96 +273,14 @@ export default function StudioWizard({
     };
   }, [open]);
 
-  // Provincias
-  useEffect(() => {
-    if (!countryId) {
-      setProvinces([]);
-      setProvinceId("");
-      setCities([]);
-      setCityId("");
-      return;
-    }
-    let mounted = true;
-    (async () => {
-      try {
-        setErr(null);
-        setLoadingProvinces(true);
-        setProvinceId("");
-        setCities([]);
-        setCityId("");
-        const data = await apiGet<Province[]>(`/address/${countryId}/provinces`);
-        if (!mounted) return;
-        data.sort((a, b) => a.provinceDesc.localeCompare(b.provinceDesc, "es"));
-        setProvinces(data);
-      } catch {
-        setErr("No se pudieron cargar las provincias");
-        setProvinces([]);
-      } finally {
-        setLoadingProvinces(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [countryId]);
-
-  // Ciudades
-  useEffect(() => {
-    if (!provinceId) {
-      setCities([]);
-      setCityId("");
-      return;
-    }
-    let mounted = true;
-    (async () => {
-      try {
-        setErr(null);
-        setLoadingCities(true);
-        setCityId("");
-        const data = await apiGet<City[]>(`/address/${provinceId}/cities`);
-        if (!mounted) return;
-        data.sort((a, b) => a.cityDesc.localeCompare(b.cityDesc, "es"));
-        setCities(data);
-      } catch {
-        setErr("No se pudieron cargar las ciudades");
-        setCities([]);
-      } finally {
-        setLoadingCities(false);
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [provinceId]);
-
   // Validaciones
   const canNextStep1 = displayName.trim().length > 0;
-  const canNextStep2 =
-    countryId &&
-    provinceId &&
-    cityId &&
-    street.trim().length > 0 &&
-    typeof streetNum === "number" &&
-    !Number.isNaN(streetNum as number);
+  const canNextStep2 = street.trim().length > 0 && !!streetNum;
   const canNextStep3 = true;
 
   const canSubmit =
     rooms.length > 0 &&
     rooms.every((r) => r.roomName.trim().length > 0 && typeof r.hourlyPrice === "number" && r.hourlyPrice > 0);
-
-  // Placeholders
-  const countryPH = useMemo(
-    () => (loadingCountries ? "Cargando países..." : "Selecciona país"),
-    [loadingCountries]
-  );
-  const provincePH = useMemo(() => {
-    if (!countryId) return "Selecciona un país primero";
-    return loadingProvinces ? "Cargando provincias..." : "Selecciona provincia";
-  }, [countryId, loadingProvinces]);
-  const cityPH = useMemo(() => {
-    if (!provinceId) return "Selecciona una provincia primero";
-    return loadingCities ? "Cargando ciudades..." : "Selecciona ciudad";
-  }, [provinceId, loadingCities]);
 
   // Helpers rooms
   const addRoom = () =>
@@ -328,17 +311,16 @@ export default function StudioWizard({
         equipment, // ← listo para el backend
       };
     });
-
-      const addressObj =
-    countryId && provinceId && cityId && street.trim() && typeof streetNum === "number"
+    const addressObj = street.trim() && streetNum
       ? {
-          idCity: Number(cityId),
-          street: street.trim(),
-          streetNum: Number(streetNum),
-          addressDesc: addressDesc || null,
-        }
+        street: street.trim(),
+        streetNum: Number(streetNum),
+        addressDesc: addressDesc || null,
+        provinceName: provinceName ?? null,
+        municipioName: cityName ?? null,
+        barrioName: neighborhoodName ?? null,
+      }
       : undefined;
-
     const payload: WizardCompletePayload = {
       profile: {
         displayName,
@@ -482,68 +464,61 @@ export default function StudioWizard({
             {/* Paso 2: Dirección + geolocalización */}
             {step === 2 && (
               <section className="grid grid-cols-1 gap-4">
-                <div className="grid sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[#65558F] text-sm">País</label>
-                    <select
-                      className="border rounded-lg p-2 w-full"
-                      value={countryId}
-                      onChange={(e) => setCountryId(e.target.value ? Number(e.target.value) : "")}
-                      disabled={loadingCountries}
-                    >
-                      <option value="">{countryPH}</option>
-                      {countries.map((c) => (
-                        <option key={c.idCountry} value={c.idCountry}>
-                          {c.countryDesc}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[#65558F] text-sm">Provincia</label>
-                    <select
-                      className="border rounded-lg p-2 w-full"
-                      value={provinceId}
-                      onChange={(e) => setProvinceId(e.target.value ? Number(e.target.value) : "")}
-                      disabled={!countryId || loadingProvinces}
-                    >
-                      <option value="">{provincePH}</option>
-                      {provinces.map((p) => (
-                        <option key={p.idProvince} value={p.idProvince}>
-                          {p.provinceDesc}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-[#65558F] text-sm">Ciudad</label>
-                    <select
-                      className="border rounded-lg p-2 w-full"
-                      value={cityId}
-                      onChange={(e) => setCityId(e.target.value ? Number(e.target.value) : "")}
-                      disabled={!provinceId || loadingCities}
-                    >
-                      <option value="">{cityPH}</option>
-                      {cities.map((c) => (
-                        <option key={c.idCity} value={c.idCity}>
-                          {c.cityDesc}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                {/* 🔎 Buscador Mapbox (mismo que EventWizard) */}
+                <div>
+                  <label className="text-[#65558F] text-sm mb-1 block">Buscar dirección</label>
+                  <MapboxSearchBox
+                    accessToken={MAPBOX_TOKEN}
+                    placeholder="Escribí la dirección (ej. 'Av. Corrientes 1234')"
+                    country="AR"
+                    language="es"
+                    limit={5}
+                    types="address,poi"
+                    className="w-full"
+                    onRetrieve={(ev: any) => {
+                      const f = ev?.detail?.features?.[0];
+                      if (!f) return;
+
+                      const coords = Array.isArray(f.geometry?.coordinates) ? f.geometry.coordinates : null;
+                      if (coords && typeof coords[0] === "number" && typeof coords[1] === "number") {
+                        setLongitude(coords[0]);
+                        setLatitude(coords[1]);
+                      }
+
+                      // Heurística para calle y altura
+                      const line = f?.properties?.address_line1 || f?.properties?.name || f?.place_name || "";
+                      const m = String(line).match(/^(.+?)\s+(\d+[A-Za-z\-]*)\b/);
+                      if (m) {
+                        if (!street) setStreet(m[1]);
+                        if (!streetNum) setStreetNum(m[2]);
+                      }
+
+                      const { city, province, neighborhood } = getCityAndProvince(f);
+                      setCityName(city);
+                      setProvinceName(province);
+                      setNeighborhoodName(neighborhood);
+                    }}
+                  />
+                  {(latitude != null && longitude != null) && (
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Coordenadas: <span className="font-mono">lat {latitude.toFixed(6)}, lon {longitude.toFixed(6)}</span>
+                    </p>
+                  )}
                 </div>
 
+                {/* Campos manuales (prellenados por el buscador si se pudo) */}
                 <div className="grid sm:grid-cols-3 gap-3">
                   <div className="sm:col-span-2">
                     <label className="text-[#65558F] text-sm">Calle</label>
-                    <Input value={street} onChange={(e) => setStreet(e.target.value)} />
+                    <Input value={street} onChange={(e) => setStreet(e.target.value)} name="street" autoComplete="street-address" />
                   </div>
                   <div>
                     <label className="text-[#65558F] text-sm">Altura</label>
                     <Input
-                      type="number"
-                      value={typeof streetNum === "number" ? streetNum : ""}
-                      onChange={(e) => setStreetNum(e.target.value ? Number(e.target.value) : "")}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={streetNum}
+                      onChange={(e) => setStreetNum(e.target.value.replace(/[^0-9]/g, ""))}
                     />
                   </div>
                 </div>
@@ -558,7 +533,7 @@ export default function StudioWizard({
                     ? <span className="text-red-600">{geoError}</span>
                     : latitude != null && longitude != null
                       ? <>Ubicación detectada: <strong>{latitude.toFixed(6)}, {longitude.toFixed(6)}</strong></>
-                      : "Obteniendo ubicación..."}
+                      : "Podés buscar la dirección o permitir geolocalización."}
                 </div>
               </section>
             )}

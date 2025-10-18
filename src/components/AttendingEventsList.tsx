@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Share2, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +40,19 @@ function toDayHM(iso: string) {
   const hh = String(d.getHours()).padStart(2, "0");
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${dd} ${hh}:${mm}`;
+}
+
+/** Mostrar solo próximos u ONGOING:
+ * si hay endsAt: visible si now <= endsAt
+ * si NO hay endsAt: visible si now <= startsAt
+ */
+function filterUpcoming(list: EventLite[]) {
+  const now = Date.now();
+  return list.filter((ev) => {
+    const start = new Date(ev.startsAt).getTime();
+    const end = ev.endsAt ? new Date(ev.endsAt).getTime() : start;
+    return end >= now;
+  });
 }
 
 export default function AttendingEventsList() {
@@ -88,7 +101,9 @@ export default function AttendingEventsList() {
     };
   }, [router]);
 
-  const empty = !loading && items.length === 0;
+  // ⛳ Derivamos los visibles (sin pasados)
+  const visibleItems = useMemo(() => filterUpcoming(items), [items]);
+  const empty = !loading && visibleItems.length === 0;
 
   async function handleShare(ev: EventLite) {
     const url = `${process.env.NEXT_PUBLIC_CLIENT_URL ?? "http://localhost:3000"}/events/${ev.idEvent}`;
@@ -112,30 +127,30 @@ export default function AttendingEventsList() {
   return (
     <div className="space-y-6">
       {loading && (
-        <div className="space-y-3 animate-pulse">
-          <div className="h-24 bg-muted/60 rounded-2xl" />
-          <div className="h-24 bg-muted/60 rounded-2xl" />
-          <div className="h-24 bg-muted/60 rounded-2xl" />
+        <div className="space-y-3">
+          <div className="h-24 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
+          <div className="h-24 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
+          <div className="h-24 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
         </div>
       )}
 
       {error && !loading && (
-        <Card className="rounded-2xl">
-          <CardContent className="p-6 text-sm text-destructive">{error}</CardContent>
+        <Card className="rounded-2xl border border-red-200/70 bg-red-50/60">
+          <CardContent className="p-6 text-sm text-red-700">{error}</CardContent>
         </Card>
       )}
 
       {empty && (
-        <Card className="rounded-2xl">
-          <CardContent className="p-8 text-sm text-muted-foreground">
-            No tenés eventos agendados todavía.
+        <Card className="rounded-2xl border border-dashed border-[#CBB8FF] bg-[#F8F6FF]">
+          <CardContent className="p-8 text-sm text-[#65558F]">
+            No tenés eventos agendados próximos.
           </CardContent>
         </Card>
       )}
 
-      {!loading && items.length > 0 && (
+      {!loading && visibleItems.length > 0 && (
         <div className="grid grid-cols-1 gap-4">
-          {items.map((ev) => {
+          {visibleItems.map((ev) => {
             const visLabel = ev.visibility === "private" ? "Privado" : "Público";
             const addr = ev.address ?? null;
             const addrLine = addr
@@ -143,29 +158,47 @@ export default function AttendingEventsList() {
               : null;
 
             return (
-              <Card key={ev.idEvent} className="rounded-2xl">
-                <CardHeader className="p-4 pb-2">
+              <Card
+                key={ev.idEvent}
+                className="
+                  rounded-2xl
+                  border border-[#E9E6F7]
+                  hover:shadow-md transition-shadow
+                  bg-white
+                "
+              >
+                <CardHeader className="p-4 pb-2 border-b border-[#F0ECFF]">
                   <div className="flex items-start justify-between gap-3">
-                    <CardTitle className="text-lg font-semibold leading-tight">
+                    <CardTitle className="text-lg font-semibold leading-tight text-[#2A2140]">
                       {ev.name}
                     </CardTitle>
-                    <Badge variant={ev.visibility === "private" ? "secondary" : "default"}>
+                    <Badge
+                      className={
+                        ev.visibility === "private"
+                          ? "bg-[#EDE9FE] text-[#5B21B6] border border-[#DDD6FE]"
+                          : "bg-[#E9E6F7] text-[#65558F] border border-[#DAD4F0]"
+                      }
+                    >
                       {visLabel}
                     </Badge>
                   </div>
                 </CardHeader>
 
-                <CardContent className="p-4 pt-0">
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                <CardContent className="p-4 pt-3">
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-[#5A5470]">
                     <div className="flex items-center gap-2">
-                      <CalendarDays className="h-4 w-4" />
-                      <span>{toDayHM(ev.startsAt)}</span>
+                      <CalendarDays className="h-4 w-4 text-[#65558F]" />
+                      <span className="font-medium text-[#3A2E5E]">{toDayHM(ev.startsAt)}</span>
                     </div>
-                    {addrLine && <span className="text-xs">· {addrLine}</span>}
+                    {addrLine && (
+                      <span className="text-xs text-[#6D5FA4] bg-[#F4F1FB] border border-[#E8E1FF] px-2 py-0.5 rounded-full">
+                        {addrLine}
+                      </span>
+                    )}
                   </div>
 
                   {ev.description && (
-                    <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
+                    <p className="mt-2 text-sm text-[#5A5470]">
                       {ev.description}
                     </p>
                   )}
@@ -173,7 +206,12 @@ export default function AttendingEventsList() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button
                       size="sm"
-                      className="rounded-xl"
+                      className="
+                        rounded-xl
+                        bg-[#F0ECFF] text-[#4F3D8B]
+                        hover:bg-[#E6DEFF]
+                        border border-[#DDD3FF]
+                      "
                       onClick={() => handleShare(ev)}
                     >
                       <Share2 className="h-4 w-4 mr-2" />
@@ -183,7 +221,11 @@ export default function AttendingEventsList() {
                     <Button
                       variant="secondary"
                       size="sm"
-                      className="rounded-xl"
+                      className="
+                        rounded-xl
+                        bg-[#65558F] text-white
+                        hover:bg-[#57497B]
+                      "
                       onClick={() => router.push(`/events/${ev.idEvent}`)}
                     >
                       Ver

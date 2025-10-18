@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { CalendarDays, MapPin, UserPlusIcon, Users } from "lucide-react";
 import EventMapPicker from "@/components/EventMapPicker";
 import { InvitePeopleDialog, InviteTarget } from "@/components/InvitePeopleDialog";
@@ -94,7 +93,17 @@ function EventStaticMap({ lat, lon }: { lat: number; lon: number }) {
     };
   }, [lat, lon]);
 
-  return <div ref={ref} className="w-full h-[280px] rounded-2xl overflow-hidden" />;
+  return (
+    <div
+      ref={ref}
+      className="
+        w-full h-[280px]
+        rounded-2xl overflow-hidden
+        ring-1 ring-[#E8E1FF]
+        shadow-[0_1px_0_0_rgba(101,85,143,0.06)]
+      "
+    />
+  );
 }
 
 export default function EventHome() {
@@ -204,10 +213,16 @@ export default function EventHome() {
   if (!idEvent) {
     return (
       <div className="max-w-3xl mx-auto p-6">
-        <Card className="rounded-2xl">
+        <Card className="rounded-2xl border border-[#E8E1FF] bg-[#F8F6FF]">
           <CardContent className="p-6 space-y-2">
-            <p className="text-sm text-muted-foreground">ID de evento inválido.</p>
-            <Button variant="secondary" onClick={() => router.push("/discover")}>Volver</Button>
+            <p className="text-sm text-[#65558F]">ID de evento inválido.</p>
+            <Button
+              variant="secondary"
+              className="rounded-2xl"
+              onClick={() => router.push("/discover")}
+            >
+              Volver
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -216,11 +231,11 @@ export default function EventHome() {
 
   if (loading) {
     return (
-      <div className="max-w-5xl mx-auto p-8 animate-pulse">
-        <div className="h-28 bg-muted rounded-2xl mb-6" />
+      <div className="max-w-5xl mx-auto p-8">
+        <div className="h-28 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] mb-6 animate-pulse" />
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          <div className="md:col-span-2 h-64 bg-muted rounded-2xl" />
-          <div className="h-64 bg-muted rounded-2xl" />
+          <div className="md:col-span-2 h-64 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
+          <div className="h-64 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
         </div>
       </div>
     );
@@ -229,12 +244,16 @@ export default function EventHome() {
   if (error || !event) {
     return (
       <div className="max-w-3xl mx-auto p-6">
-        <Card className="rounded-2xl">
+        <Card className="rounded-2xl border border-red-200/70 bg-red-50/60">
           <CardContent className="p-6 space-y-4">
-            <p className="text-sm text-destructive">{error || "No se encontró el evento."}</p>
+            <p className="text-sm text-red-700">{error || "No se encontró el evento."}</p>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => router.back()}>Volver</Button>
-              <Button onClick={() => router.push(`/events/${idEvent}`)}>Reintentar</Button>
+              <Button variant="secondary" className="rounded-2xl" onClick={() => router.back()}>
+                Volver
+              </Button>
+              <Button className="rounded-2xl bg-[#65558F] text-white hover:bg-[#5a4d82]">
+                Reintentar
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -261,16 +280,20 @@ export default function EventHome() {
   return (
     <div className="w-full max-w-6xl mx-auto p-6 md:p-8 space-y-6">
       {/* Header */}
-      <Card className="rounded-2xl shadow-sm">
+      <Card className="rounded-2xl shadow-sm border border-[#E9E6F7] bg-white">
         <CardContent className="p-6 md:p-8">
           <div className="flex flex-col md:flex-row md:items-start gap-4 md:gap-6 justify-between">
             <div className="space-y-2">
-              <h1 className="text-2xl md:text-3xl font-semibold leading-tight text-[#65558F]">{event.name}</h1>
+              <h1 className="text-2xl md:text-3xl font-semibold leading-tight text-[#2A2140]">
+                {event.name}
+              </h1>
               <div className="flex flex-wrap items-center gap-2 text-sm">
-                <Badge className="bg-[#65558F]/10 text-[#65558F] border border-[#65558F]/20">{visLabel}</Badge>
+                <Badge className="bg-[#E9E6F7] text-[#65558F] border border-[#DAD4F0]">
+                  {visLabel}
+                </Badge>
                 {typeof event.capacityMax === "number" && (
-                  <span className="inline-flex items-center text-muted-foreground">
-                    <Users className="h-4 w-4 mr-1.5" /> Capacidad: {event.capacityMax}
+                  <span className="inline-flex items-center text-[#5A5470]">
+                    <Users className="h-4 w-4 mr-1.5 text-[#65558F]" /> Capacidad: {event.capacityMax}
                   </span>
                 )}
               </div>
@@ -299,19 +322,35 @@ export default function EventHome() {
           </div>
 
           {event.description && (
-            <p className="mt-3 text-sm md:text-base leading-relaxed text-foreground/80 whitespace-pre-wrap">
+            <p className="mt-3 text-sm md:text-base leading-relaxed text-[#5A5470] whitespace-pre-wrap">
               {event.description}
             </p>
           )}
 
-          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-muted-foreground">
-            <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4" /><span>{startDay}{startHM ? ` — ${startHM}` : ""}{endHM ? ` a ${endHM}` : ""}</span></div>
-            <div className="flex items-start gap-2"><MapPin className="h-4 w-4 mt-0.5" /><div>
-              {addrLine && <div>{addrLine}</div>}
-              {addrDetail && <div className="text-xs">{addrDetail}</div>}
-              {!addrLine && coordsLine && <div>Coords: {coordsLine}</div>}
-              {!addrLine && !coordsLine && <div className="italic">Ubicación sin definir</div>}
-            </div></div>
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-[#5A5470]">
+            <div className="flex items-center gap-2">
+              <CalendarDays className="h-4 w-4 text-[#65558F]" />
+              <span className="font-medium text-[#3A2E5E]">
+                {startDay}{startHM ? ` — ${startHM}` : ""}{endHM ? ` a ${endHM}` : ""}
+              </span>
+            </div>
+            <div className="flex items-start gap-2">
+              <MapPin className="h-4 w-4 mt-0.5 text-[#65558F]" />
+              <div>
+                {addrLine && (
+                  <div className="text-[#3A2E5E]">
+                    {addrLine}
+                  </div>
+                )}
+                {addrDetail && (
+                  <div className="text-xs text-[#6D5FA4]">
+                    {addrDetail}
+                  </div>
+                )}
+                {!addrLine && coordsLine && <div className="text-[#3A2E5E]">Coords: {coordsLine}</div>}
+                {!addrLine && !coordsLine && <div className="italic text-[#6D5FA4]">Ubicación sin definir</div>}
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -319,12 +358,11 @@ export default function EventHome() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Columna izquierda */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Mapa - si hay coords, mostrarlo siempre. Además, permitir fijar/editar si el creador lo desea */}
-          <Card className="rounded-2xl shadow-sm">
-            <CardHeader className="p-6 pb-3">
-              <CardTitle className="text-base">Ubicación</CardTitle>
+          <Card className="rounded-2xl shadow-sm border border-[#E9E6F7] bg-white">
+            <CardHeader className="p-6 pb-3 border-b border-[#F0ECFF]">
+              <CardTitle className="text-base text-[#3A2E5E]">Ubicación</CardTitle>
             </CardHeader>
-            <CardContent className="p-6 pt-0 space-y-4">
+            <CardContent className="p-6 pt-4 space-y-4">
               {showPicker ? (
                 <div className="space-y-4">
                   <EventMapPicker
@@ -332,7 +370,12 @@ export default function EventHome() {
                     initialLon={lon ?? undefined}
                     onPick={(newLat, newLon) => setPicked({ lat: newLat, lon: newLon })}
                   />
-                  <div className="text-sm">Seleccionado: <b>{picked ? `${picked.lat.toFixed(6)}, ${picked.lon.toFixed(6)}` : "—"}</b></div>
+                  <div className="text-sm">
+                    Seleccionado:{" "}
+                    <b className="text-[#3A2E5E]">
+                      {picked ? `${picked.lat.toFixed(6)}, ${picked.lon.toFixed(6)}` : "—"}
+                    </b>
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
@@ -360,7 +403,13 @@ export default function EventHome() {
                     >
                       Guardar ubicación
                     </Button>
-                    <Button type="button" variant="secondary" size="lg" className="rounded-2xl" onClick={() => setShowPicker(false)}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="lg"
+                      className="rounded-2xl"
+                      onClick={() => setShowPicker(false)}
+                    >
                       Cancelar
                     </Button>
                   </div>
@@ -368,11 +417,11 @@ export default function EventHome() {
               ) : lat != null && lon != null ? (
                 <EventStaticMap lat={lat} lon={lon} />
               ) : (
-                <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                <div className="rounded-2xl border border-dashed border-[#CBB8FF] bg-[#F8F6FF] p-8 text-center text-sm text-[#65558F]">
                   No hay coordenadas cargadas.
                   {isCreator && (
                     <div className="mt-3">
-                      <Button variant="outline" className="rounded-2xl" onClick={() => setShowPicker(true)}>
+                      <Button variant="outline" className="rounded-2xl border-[#C8BEEA] text-[#65558F]" onClick={() => setShowPicker(true)}>
                         <MapPin className="mr-2 h-4 w-4" /> Fijar ubicación en mapa
                       </Button>
                     </div>
@@ -382,7 +431,7 @@ export default function EventHome() {
 
               {lat != null && lon != null && isCreator && (
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" className="rounded-2xl" onClick={() => setShowPicker(true)}>
+                  <Button variant="outline" className="rounded-2xl border-[#C8BEEA] text-[#65558F]" onClick={() => setShowPicker(true)}>
                     Editar ubicación
                   </Button>
                 </div>
@@ -393,31 +442,55 @@ export default function EventHome() {
 
         {/* Columna derecha (acciones) */}
         <div className="lg:col-span-1">
-          <Card className="rounded-2xl shadow-sm sticky top-6">
-            <CardHeader className="p-6 pb-3">
-              <CardTitle className="text-base">Acciones</CardTitle>
+          <Card className="rounded-2xl shadow-sm border border-[#E9E6F7] bg-white sticky top-6">
+            <CardHeader className="p-6 pb-3 border-b border-[#F0ECFF]">
+              <CardTitle className="text-base text-[#3A2E5E]">Acciones</CardTitle>
             </CardHeader>
-            <CardContent className="p-6 pt-2 space-y-3">
-              {/* Toggle picker siempre visible para el creador */}
+            <CardContent className="p-6 pt-4 space-y-3">
               {isCreator && (
-                <Button type="button" variant="outline" size="lg" className="w-full rounded-2xl justify-start" onClick={() => setShowPicker((v) => !v)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  className="w-full rounded-2xl justify-start border-[#C8BEEA] text-[#65558F]"
+                  onClick={() => setShowPicker((v) => !v)}
+                >
                   <MapPin className="mr-2 h-4 w-4" /> {showPicker ? "Ocultar mapa" : lat && lon ? "Editar ubicación" : "Fijar ubicación en mapa"}
                 </Button>
               )}
 
               {isCreator ? (
                 <>
-                  <Button type="button" variant="outline" size="lg" className="w-full rounded-2xl justify-start" onClick={() => setShowInvite(true)}>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="w-full rounded-2xl justify-start border-[#C8BEEA] text-[#65558F]"
+                    onClick={() => setShowInvite(true)}
+                  >
                     <Users className="mr-2 h-4 w-4" /> Invitar músicos o bandas
                   </Button>
-                  <p className="text-xs text-muted-foreground">Sos el creador del evento. No podés agendar tu propio evento.</p>
+                  <p className="text-xs text-[#6D5FA4]">
+                    Sos el creador del evento. No podés agendar tu propio evento.
+                  </p>
                 </>
               ) : (
                 <>
-                  <Button type="button" size="lg" className="w-full rounded-2xl bg-[#65558F] text-white hover:bg-[#5a4d82] shadow-sm" onClick={handleAttend}>
+                  <Button
+                    type="button"
+                    size="lg"
+                    className="w-full rounded-2xl bg-[#65558F] text-white hover:bg-[#5a4d82] shadow-sm"
+                    onClick={handleAttend}
+                  >
                     <UserPlusIcon className="mr-2 h-4 w-4" /> Asistir
                   </Button>
-                  <Button type="button" variant="secondary" size="lg" className="w-full rounded-2xl" onClick={() => setShowJoinBand(true)}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="lg"
+                    className="w-full rounded-2xl"
+                    onClick={() => setShowJoinBand(true)}
+                  >
                     Unirse como banda (admin)
                   </Button>
                 </>

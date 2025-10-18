@@ -17,7 +17,6 @@ import { InviteToBandButton } from "./InviteToBandButton";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
-// ---- Tipos ----
 export type Api = {
   userData: {
     idUser: number;
@@ -72,7 +71,6 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
   const [deletingBandId, setDeletingBandId] = useState<number | null>(null);
   const [deletingEventId, setDeletingEventId] = useState<number | null>(null);
 
-  // ---- Carga de datos ----
   useEffect(() => {
     if (!effectiveId || Number.isNaN(Number(effectiveId))) {
       setLoading(false);
@@ -114,7 +112,6 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
     };
   }, [effectiveId]);
 
-  // ---- Acciones ----
   async function handleDeleteBand(idBand: number, bandName?: string) {
     if (!Number.isFinite(idBand)) return;
     const ok = window.confirm(
@@ -130,9 +127,7 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
         headers: { Accept: "application/json" },
       });
       let json: any = {};
-      try {
-        json = await res.json();
-      } catch { }
+      try { json = await res.json(); } catch {}
       if (!res.ok || json?.ok === false) {
         if (res.status === 403) throw new Error("No sos admin de esta banda.");
         if (res.status === 404) throw new Error("La banda no existe.");
@@ -160,15 +155,15 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
         headers: { Accept: "application/json" },
       });
       let json: any = {};
-      try {
-        json = await res.json();
-      } catch { }
+      try { json = await res.json(); } catch {}
       if (!res.ok || json?.ok === false) {
         if (res.status === 403) throw new Error("No sos admin de este evento.");
         if (res.status === 404) throw new Error("El evento no existe");
         throw new Error(json?.error ?? `HTTP ${res.status}`);
       }
-      setData((prev) => (prev ? { ...prev, eventsCreated: prev.eventsCreated.filter((e) => e.idEvent !== idEvent) } : prev));
+      setData((prev) =>
+        prev ? { ...prev, eventsCreated: prev.eventsCreated.filter((e) => e.idEvent !== idEvent) } : prev
+      );
       toast.success("Evento eliminado");
     } catch (e: any) {
       console.error(e);
@@ -184,21 +179,17 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
       credentials: "include",
     });
     const json = await res.json();
-    if (json.ok) {
-      toast.success(json.data?.info ?? "Solicitud enviada");
-    } else {
-      toast.error(json.error ?? "No se pudo enviar la solicitud");
-    }
+    if (json.ok) toast.success(json.data?.info ?? "Solicitud enviada");
+    else toast.error(json.error ?? "No se pudo enviar la solicitud");
   }
 
-  // ---- Render ----
   if (loading) {
     return (
-      <div className="max-w-6xl mx-auto p-6 animate-pulse">
-        <div className="h-36 bg-muted rounded-2xl mb-6" />
+      <div className="max-w-6xl mx-auto p-6">
+        <div className="h-36 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] mb-6 animate-pulse" />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="h-64 bg-muted rounded-2xl" />
-          <div className="h-64 bg-muted rounded-2xl" />
+          <div className="h-64 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
+          <div className="h-64 bg-[#F4F1FB] rounded-2xl border border-[#E8E1FF] animate-pulse" />
         </div>
       </div>
     );
@@ -207,10 +198,13 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
   if (!data || !data.userData) {
     return (
       <div className="max-w-4xl mx-auto p-6">
-        <Card className="rounded-2xl shadow-sm">
+        <Card className="rounded-2xl shadow-sm border border-[#E9E6F7] bg-[#F8F6FF]">
           <CardContent className="py-10 text-center">
-            <p className="text-lg">No encontramos el perfil.</p>
-            <Button className="mt-4" onClick={() => router.push(`/home/${user?.idUser ?? ""}`)}>
+            <p className="text-lg text-[#3A2E5E]">No encontramos el perfil.</p>
+            <Button
+              className="mt-4 rounded-2xl bg-[#65558F] text-white hover:bg-[#5a4d82]"
+              onClick={() => router.push(`/home/${user?.idUser ?? ""}`)}
+            >
               Volver al home
             </Button>
           </CardContent>
@@ -226,7 +220,7 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
   return (
     <div className="max-w-6xl mx-auto p-6 space-y-8">
       {/* Header */}
-      <Card className="rounded-2xl shadow-sm">
+      <Card className="rounded-2xl shadow-sm border border-[#E9E6F7]">
         <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center gap-6">
           <AvatarEditable
             idUser={userData.idUser}
@@ -240,22 +234,25 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
 
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-[#65558F]">
+              <h1 className="text-2xl md:text-3xl font-semibold tracking-tight text-[#2A2140]">
                 {userData.displayName}
               </h1>
               {musician?.isAvailable && (
-                <Badge className="bg-[#65558F] text-white rounded-full">Disponible</Badge>
+                <Badge className="bg-[#E9E6F7] text-[#65558F] border border-[#DAD4F0] rounded-full">
+                  Disponible
+                </Badge>
               )}
             </div>
-            {userData.bio && <p className="text-muted-foreground mt-1 text-balance">{userData.bio}</p>}
+            {userData.bio && <p className="text-[#5A5470] mt-1">{userData.bio}</p>}
 
-            <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-sm text-muted-foreground">
+            <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-sm text-[#5A5470]">
               {musician?.experienceYears != null && <span>{musician.experienceYears} años de experiencia</span>}
               {musician && <span>Nivel: {musician.skillLevel}</span>}
               {musician?.travelRadiusKm != null && <span>Radio: {musician.travelRadiusKm} km</span>}
               {userData.latitude != null && userData.longitude != null && (
                 <span className="inline-flex items-center gap-1">
-                  <MapPin size={16} /> {toNum(userData.latitude).toFixed(3)},{toNum(userData.longitude).toFixed(3)}
+                  <MapPin size={16} className="text-[#65558F]" />
+                  {toNum(userData.latitude).toFixed(3)},{toNum(userData.longitude).toFixed(3)}
                 </span>
               )}
             </div>
@@ -263,11 +260,9 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
 
           {/* Action bar */}
           <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto md:justify-end">
-
             {isOwner ? (
               <Button
-                className="bg-[#65558F] text-white rounded-xl shadow-sm"
-                variant="secondary"
+                className="rounded-2xl bg-[#65558F] text-white hover:bg-[#5a4d82] shadow-sm"
                 onClick={() => router.push(`/profile/${userData.idUser}/edit`)}
               >
                 <Pencil className="mr-2 h-4 w-4" /> Editar Perfil
@@ -275,44 +270,41 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
             ) : (
               <>
                 <Button
-                  className="bg-[#65558F] text-white rounded-xl shadow-sm"
-                  variant="secondary"
+                  className="rounded-2xl bg-[#65558F] text-white hover:bg-[#5a4d82] shadow-sm"
                   onClick={() => handleSendRequest(Number(effectiveId))}
                 >
                   <UserPlus size={18} className="mr-1" /> Conectar
                 </Button>
                 <RateUserButton targetIdUser={userData.idUser} />
-                {/* Mostrar Reportar solo si no es su propio perfil */}
                 <ReportUserButton reportedIdUser={userData.idUser} />
                 <InviteToBandButton
-                  // si querés forzar una banda específica, pasá bandId={...}
                   targetMusicianId={userData.idUser}
                   buttonLabel="Invitar a banda"
-                  className="rounded-xl shadow-sm"
+                  className="rounded-2xl bg-[#F0ECFF] text-[#4F3D8B] hover:bg-[#E6DEFF] border border-[#DDD3FF] shadow-sm"
                 />
               </>
             )}
           </div>
         </CardContent>
       </Card>
+
       <UserFeedbackPanel targetIdUser={userData.idUser} showCommentBox />
 
       {/* Instruments & Genres */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="rounded-2xl shadow-sm">
+        <Card className="rounded-2xl shadow-sm border border-[#E9E6F7]">
           <CardHeader>
-            <CardTitle className="text-[#65558F]">Instrumentos</CardTitle>
+            <CardTitle className="text-[#3A2E5E]">Instrumentos</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {musician?.instruments?.length ? (
               musician.instruments.map((i) => (
                 <Badge
                   key={`inst-${i.idInstrument}`}
-                  variant={i.isPrimary ? "default" : "secondary"}
                   className={
                     i.isPrimary
                       ? "bg-[#65558F] text-white text-sm px-3 py-1 rounded-full"
-                      : "text-sm px-3 py-1 rounded-full"
+                      : "text-sm px-3 py-1 rounded-full border border-[#DAD4F0] text-[#3A2E5E]"
                   }
                 >
                   {i.instrumentName}
@@ -320,24 +312,24 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
                 </Badge>
               ))
             ) : (
-              <p className="text-muted-foreground">Sin instrumentos cargados.</p>
+              <p className="text-[#6D5FA4]">Sin instrumentos cargados.</p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="rounded-2xl shadow-sm">
+        <Card className="rounded-2xl shadow-sm border border-[#E9E6F7]">
           <CardHeader>
-            <CardTitle className="text-[#65558F]">Géneros</CardTitle>
+            <CardTitle className="text-[#3A2E5E]">Géneros</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             {musician?.genres?.length ? (
               musician.genres.map((g) => (
-                <Badge key={`genre-${g.idGenre}`} variant="outline" className="rounded-full">
+                <Badge key={`genre-${g.idGenre}`} variant="outline" className="rounded-full border-[#DAD4F0] text-[#3A2E5E]">
                   {g.genreName}
                 </Badge>
               ))
             ) : (
-              <p className="text-muted-foreground">Sin géneros cargados.</p>
+              <p className="text-[#6D5FA4]">Sin géneros cargados.</p>
             )}
           </CardContent>
         </Card>
@@ -345,25 +337,28 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
 
       {/* My Bands */}
       <section>
-        <h2 className="text-[#65558F] text-lg font-semibold mb-3">Mis Bandas</h2>
+        <h2 className="text-[#3A2E5E] text-lg font-semibold mb-3">Mis Bandas</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {bands.length ? (
             bands.map((b) => (
-              <Card key={`band-${b.idBand}`} className="rounded-2xl shadow-sm transition hover:shadow-md">
+              <Card
+                key={`band-${b.idBand}`}
+                className="rounded-2xl shadow-sm transition hover:shadow-md border border-[#E9E6F7]"
+              >
                 <CardContent className="p-5 space-y-3">
                   <div className="flex items-center justify-between gap-4">
                     <div className="min-w-0">
-                      <h3 className="font-medium truncate">{b.name}</h3>
-                      <p className="text-sm text-muted-foreground line-clamp-2">
+                      <h3 className="font-medium truncate text-[#2A2140]">{b.name}</h3>
+                      <p className="text-sm text-[#5A5470] line-clamp-2">
                         {b.description ?? "Sin descripción"}
                       </p>
                     </div>
                     <div className="text-right space-y-2 shrink-0">
-                      <div className="flex items-center justify-end gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center justify-end gap-2 text-sm text-[#6D5FA4]">
                         <Users size={16} /> {b.membersCount}
                       </div>
                       {b.isAdmin && (
-                        <Badge className="inline-flex items-center gap-1 rounded-full">
+                        <Badge className="inline-flex items-center gap-1 rounded-full bg-[#EDE9FE] text-[#5B21B6] border border-[#DDD6FE]">
                           <Crown size={14} /> Admin
                         </Badge>
                       )}
@@ -373,7 +368,7 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
                   {b.genres?.length > 0 && (
                     <div className="flex flex-wrap gap-2">
                       {b.genres.map((g) => (
-                        <Badge key={`band-${b.idBand}-genre-${g.idGenre}`} variant="outline" className="rounded-full">
+                        <Badge key={`band-${b.idBand}-genre-${g.idGenre}`} variant="outline" className="rounded-full border-[#DAD4F0] text-[#3A2E5E]">
                           {g.genreName}
                         </Badge>
                       ))}
@@ -382,26 +377,28 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
 
                   {b.roleInBand && (
                     <div className="flex flex-wrap gap-2">
-                      <Badge variant="secondary" className="rounded-full">
+                      <Badge variant="secondary" className="rounded-full bg-[#E9E6F7] text-[#3A2E5E]">
                         Rol: {b.roleInBand}
                       </Badge>
                     </div>
                   )}
 
                   <div className="flex flex-wrap gap-2 pt-2">
-                    <Button size="sm" onClick={() => router.push(`/bands/${b.idBand}`)}>
+                    <Button
+                      size="sm"
+                      className="rounded-xl bg-[#65558F] text-white hover:bg-[#5a4d82]"
+                      onClick={() => router.push(`/bands/${b.idBand}`)}
+                    >
                       Ver más
                     </Button>
 
                     {isOwner && (
                       b.isAdmin ? (
                         <>
-                          <Button size="sm" variant="secondary" onClick={() => router.push(`/bands/${b.idBand}/manage`)}>
-                            Administrar
-                          </Button>
                           <Button
                             size="sm"
                             variant="destructive"
+                            className="rounded-xl"
                             onClick={() => handleDeleteBand(b.idBand, b.name)}
                             disabled={deletingBandId === b.idBand}
                           >
@@ -410,7 +407,12 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
                           </Button>
                         </>
                       ) : (
-                        <Button size="sm" variant="secondary" onClick={() => router.push(`/bands/${b.idBand}/leave`)}>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="rounded-xl bg-[#F0ECFF] text-[#4F3D8B] hover:bg-[#E6DEFF] border border-[#DDD3FF]"
+                          onClick={() => router.push(`/bands/${b.idBand}/leave`)}
+                        >
                           Salir de la banda
                         </Button>
                       )
@@ -420,8 +422,8 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
               </Card>
             ))
           ) : (
-            <Card className="rounded-2xl shadow-sm">
-              <CardContent className="p-6 text-muted-foreground">Aún no integras ninguna banda.</CardContent>
+            <Card className="rounded-2xl shadow-sm border border-dashed border-[#CBB8FF] bg-[#F8F6FF]">
+              <CardContent className="p-6 text-[#6D5FA4]">Aún no integras ninguna banda.</CardContent>
             </Card>
           )}
         </div>
@@ -429,30 +431,42 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
 
       {/* My Events */}
       <section>
-        <h2 className="text-[#65558F] text-lg font-semibold mb-3">Mis Eventos</h2>
+        <h2 className="text-[#3A2E5E] text-lg font-semibold mb-3">Mis Eventos</h2>
         <div className="space-y-4">
           {eventsCreated.length ? (
             eventsCreated.map((e) => (
-              <Card key={`event-${e.idEvent}`} className="rounded-2xl shadow-sm transition hover:shadow-md">
+              <Card
+                key={`event-${e.idEvent}`}
+                className="rounded-2xl shadow-sm transition hover:shadow-md border border-[#E9E6F7]"
+              >
                 <CardContent className="p-5 flex items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <h3 className="font-medium truncate">{e.name}</h3>
-                    <p className="text-sm text-muted-foreground">
-                      <CalendarDays className="inline mr-1 h-4 w-4" />
-                      {new Date(e.startsAt).toLocaleString()} {e.endsAt ? `— ${new Date(e.endsAt).toLocaleString()}` : ""}
+                    <h3 className="font-medium truncate text-[#2A2140]">{e.name}</h3>
+                    <p className="text-sm text-[#5A5470]">
+                      <CalendarDays className="inline mr-1 h-4 w-4 text-[#65558F]" />
+                      {new Date(e.startsAt).toLocaleString()}{" "}
+                      {e.endsAt ? `— ${new Date(e.endsAt).toLocaleString()}` : ""}
                     </p>
                     {e.description && (
-                      <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{e.description}</p>
+                      <p className="text-sm text-[#5A5470] mt-2 line-clamp-2">{e.description}</p>
                     )}
                     <div className="flex gap-2 mt-2">
-                      <Badge variant="outline" className="rounded-full capitalize">{e.visibility}</Badge>
+                      <Badge variant="outline" className="rounded-full capitalize border-[#DAD4F0] text-[#3A2E5E]">
+                        {e.visibility}
+                      </Badge>
                       {e.capacityMax != null && (
-                        <Badge variant="secondary" className="rounded-full">Capacidad: {e.capacityMax}</Badge>
+                        <Badge variant="secondary" className="rounded-full bg-[#E9E6F7] text-[#3A2E5E]">
+                          Capacidad: {e.capacityMax}
+                        </Badge>
                       )}
                     </div>
                   </div>
                   <div className="flex gap-2 shrink-0">
-                    <Button size="sm" onClick={() => router.push(`/events/${e.idEvent}`)}>
+                    <Button
+                      size="sm"
+                      className="rounded-xl bg-[#65558F] text-white hover:bg-[#5a4d82]"
+                      onClick={() => router.push(`/events/${e.idEvent}`)}
+                    >
                       Ver
                     </Button>
                     {isOwner && (
@@ -461,11 +475,24 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
                         onUpdated={(updated) => {
                           console.log("Evento actualizado", updated);
                         }}
-                        trigger={<Button variant="outline">Editar</Button>}
+                        trigger={
+                          <Button
+                            variant="outline"
+                            className="rounded-xl border-[#C8BEEA] text-[#65558F] hover:bg-[#F4F1FB]"
+                          >
+                            Editar
+                          </Button>
+                        }
                       />
                     )}
                     {isOwner && (
-                      <Button size="sm" variant="destructive" onClick={() => handleDeleteEvent(e.idEvent)} disabled={deletingEventId === e.idEvent}>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        className="rounded-xl"
+                        onClick={() => handleDeleteEvent(e.idEvent)}
+                        disabled={deletingEventId === e.idEvent}
+                      >
                         <Trash2 className="mr-2 h-4 w-4" />
                         {deletingEventId === e.idEvent ? "Eliminando..." : "Eliminar"}
                       </Button>
@@ -475,8 +502,8 @@ export default function MusicianProfile({ viewUserId }: { viewUserId?: number })
               </Card>
             ))
           ) : (
-            <Card className="rounded-2xl shadow-sm">
-              <CardContent className="p-6 text-muted-foreground">No tienes eventos creados.</CardContent>
+            <Card className="rounded-2xl shadow-sm border border-dashed border-[#CBB8FF] bg-[#F8F6FF]">
+              <CardContent className="p-6 text-[#6D5FA4]">No tienes eventos creados.</CardContent>
             </Card>
           )}
         </div>

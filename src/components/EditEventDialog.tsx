@@ -2,28 +2,101 @@
 
 import * as React from "react";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle, DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { CalendarCheck2, Loader2, MapPin, Shield, Users } from "lucide-react";
-import LocationCascade, { LocationCascadeValue } from "@/components/LocationCascade";
+
+/* === Wrapper simple para <mapbox-search-box> === */
+function MapboxSearchBox(props: {
+  accessToken: string;
+  placeholder?: string;
+  country?: string;
+  language?: string;
+  limit?: number;
+  types?: string;
+  className?: string;
+  onRetrieve?: (ev: any) => void;
+}) {
+  const { accessToken, placeholder, country = "AR", language = "es", limit = 5, types = "address,poi", className, onRetrieve } = props;
+  const hostRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    let el: any;
+    let mounted = true;
+
+    (async () => {
+      await import("@mapbox/search-js-web");
+      if (!mounted || !hostRef.current) return;
+
+      el = document.createElement("mapbox-search-box");
+      el.setAttribute("access-token", accessToken);
+      el.setAttribute("country", country);
+      el.setAttribute("language", language);
+      el.setAttribute("limit", String(limit));
+      el.setAttribute("types", types);
+      if (placeholder) el.setAttribute("placeholder", placeholder);
+
+      const handleRetrieve = (ev: any) => onRetrieve?.(ev);
+      el.addEventListener("retrieve", handleRetrieve);
+
+      hostRef.current.innerHTML = "";
+      hostRef.current.appendChild(el);
+
+      return () => {
+        el?.removeEventListener("retrieve", handleRetrieve);
+      };
+    })();
+
+    return () => {
+      mounted = false;
+      if (hostRef.current) hostRef.current.innerHTML = "";
+    };
+  }, [accessToken, country, language, limit, types, placeholder, onRetrieve]);
+
+  return <div ref={hostRef} className={className} />;
+}
+
+/* === Extraer ciudad/provincia/barrio del feature de Mapbox === */
+function getCityAndProvince(f: any): { city: string | null; province: string | null; neighborhood: string | null } {
+  const props = f?.properties ?? {};
+  const ctxObj = props?.context ?? {};
+  const ctxArr = Array.isArray(f?.context) ? f.context : (Array.isArray(props?.context) ? props.context : []);
+  const nameOf = (x: any) => (x?.name ?? x?.text ?? null);
+  const findInArr = (prefix: string) => {
+    const it = ctxArr.find((c: any) => String(c?.id || "").startsWith(prefix));
+    return nameOf(it);
+  };
+  const first = (...vals: any[]) => vals.find(v => typeof v === "string" && v.trim()) ?? null;
+
+  const city = first(
+    props.place, props.locality, props.city,
+    nameOf((ctxObj as any).place), nameOf((ctxObj as any).locality), nameOf((ctxObj as any).district),
+    findInArr("place."), findInArr("locality."), findInArr("district.")
+  );
+
+  const province = first(
+    props.region, props.state,
+    nameOf((ctxObj as any).region),
+    findInArr("region.")
+  );
+
+  const neighborhood = first(
+    props.neighborhood,
+    nameOf((ctxObj as any).neighborhood),
+    findInArr("neighborhood.")
+  );
+
+  return { city, province, neighborhood };
+}
 
 export type EditEventDialogProps = {
   eventId: number;
@@ -32,16 +105,6 @@ export type EditEventDialogProps = {
   apiBaseUrl?: string;
   token?: string;
 };
-
-type SelectedLoc = {
-  provinceId?: string | null;
-  provinceName?: string | null;
-  municipioId?: string | null;
-  municipioName?: string | null;
-  idCity?: number | null;
-};
-
-
 
 export default function EditEventDialog({
   eventId,
@@ -54,12 +117,12 @@ export default function EditEventDialog({
   const [loading, setLoading] = React.useState(false);
   const [loadingEvent, setLoadingEvent] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [loc, setLoc] = React.useState<SelectedLoc>({});
 
   const API = React.useMemo(
     () => apiBaseUrl || process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000",
     [apiBaseUrl]
   );
+  const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN ?? "";
 
   // form state
   const [name, setName] = React.useState("");
@@ -70,45 +133,19 @@ export default function EditEventDialog({
   const [startsAtLocal, setStartsAtLocal] = React.useState("");
   const [endsAtLocal, setEndsAtLocal] = React.useState("");
 
+  // Dirección actual (preview)
+  const [currentAddress, setCurrentAddress] = React.useState<string>("");
+
+  // Cambiar dirección (opcional)
   const [changeAddress, setChangeAddress] = React.useState(false);
-  const [idCity, setIdCity] = React.useState<string>("");
   const [street, setStreet] = React.useState("");
   const [streetNum, setStreetNum] = React.useState<string>("");
   const [addressDesc, setAddressDesc] = React.useState("");
-
-
-  const handleLocChange = React.useCallback((val: LocationCascadeValue) => {
-    setLoc({
-      provinceId: val.provinceId ?? null,
-      provinceName: val.provinceName ?? null,
-      municipioId: val.municipioId ?? null,
-      municipioName: val.municipioName ?? null,
-      idCity: val.idCity ?? null,
-    });
-    setIdCity(val.idCity ? String(val.idCity) : "");
-  }, []);
-
-  async function geocodeAR(opts: {
-    provinceName?: string | null;
-    municipioName?: string | null;
-    street?: string;
-    number?: string;
-  }): Promise<{ lat: number; lon: number } | null> {
-    const { provinceName, municipioName, street, number } = opts;
-    if (!provinceName || !street || !number) return null;
-    const q = `${street} ${number}, ${municipioName ?? ""}, ${provinceName}, Argentina`.replace(/\s+,/g, ",");
-
-    try {
-      const r = await fetch(`/api/geocode/search?q=${encodeURIComponent(q)}`, { cache: "no-store" });
-      if (!r.ok) return null;
-      const json = await r.json();
-      const f = Array.isArray(json?.features) ? json.features[0] : null;
-      if (f && typeof f.lat === "number" && typeof f.lon === "number") {
-        return { lat: f.lat, lon: f.lon };
-      }
-    } catch { }
-    return null;
-  }
+  const [cityName, setCityName] = React.useState<string | null>(null);
+  const [provinceName, setProvinceName] = React.useState<string | null>(null);
+  const [neighborhoodName, setNeighborhoodName] = React.useState<string | null>(null);
+  const [lat, setLat] = React.useState<number | null>(null);
+  const [lon, setLon] = React.useState<number | null>(null);
 
   function toInputValue(raw?: string | null) {
     if (!raw) return "";
@@ -129,10 +166,14 @@ export default function EditEventDialog({
 
   function resetAddress() {
     setChangeAddress(false);
-    setIdCity("");
     setStreet("");
     setStreetNum("");
     setAddressDesc("");
+    setCityName(null);
+    setProvinceName(null);
+    setNeighborhoodName(null);
+    setLat(null);
+    setLon(null);
   }
 
   function resetAll() {
@@ -142,6 +183,7 @@ export default function EditEventDialog({
     setCapacityMax("");
     setStartsAtLocal("");
     setEndsAtLocal("");
+    setCurrentAddress("");
     resetAddress();
     setError(null);
   }
@@ -165,14 +207,24 @@ export default function EditEventDialog({
         const json = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(json?.error || "No se pudo cargar el evento");
         if (!alive) return;
-        const e = json.data ?? json; // por si el API devuelve plano
+
+        const e = json.data ?? json;
         setName(e.name ?? "");
         setDescription(e.description ?? "");
         setVisibility((e.visibility as any) === "private" ? "private" : "public");
         setCapacityMax(e.capacityMax != null ? String(e.capacityMax) : "");
         setStartsAtLocal(toInputValue(e.startsAt));
         setEndsAtLocal(toInputValue(e.endsAt));
-        resetAddress();
+
+        const a = e.address ?? {};
+        const preview = [
+          a.street && `${a.street} ${a.streetNum ?? ""}`.trim(),
+          a.neighborhoodName,
+          a.cityName,
+          a.provinceName,
+        ].filter(Boolean).join(", ");
+        setCurrentAddress(preview || "");
+        resetAddress(); // limpiamos el bloque de cambio
       } catch (err: any) {
         if (!alive) return;
         setError(err.message || "Error al cargar el evento");
@@ -182,6 +234,31 @@ export default function EditEventDialog({
     })();
     return () => { alive = false; };
   }, [open, API, eventId, token]);
+
+  /* === Handler de selección desde Mapbox === */
+  function handleRetrieve(ev: any) {
+    const f = ev?.detail?.feature || ev?.detail?.features?.[0] || null;
+    if (!f) return;
+
+    const coords = Array.isArray(f?.geometry?.coordinates) ? f.geometry.coordinates : null;
+    if (coords && typeof coords[0] === "number" && typeof coords[1] === "number") {
+      setLon(coords[0]);
+      setLat(coords[1]);
+    }
+
+    const line = f?.properties?.address_line1 || f?.properties?.name || f?.place_name || "";
+    const m = String(line).match(/^(.+?)\s+(\d+[A-Za-z\-]*)\b/);
+    if (m) {
+      if (!street) setStreet(m[1]);
+      if (!streetNum) setStreetNum(m[2]);
+    }
+
+    const { city, province, neighborhood } = getCityAndProvince(f);
+    setCityName(city);
+    setProvinceName(province);
+    setNeighborhoodName(neighborhood);
+    // console.log("Mapbox:", { city, province, neighborhood, coords });
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -200,42 +277,25 @@ export default function EditEventDialog({
     };
 
     if (changeAddress) {
-      // permitir fallback: nombres obligatorios, idCity opcional
-      if (!loc?.provinceName || !loc?.municipioName || !street.trim() || !streetNum) {
-        return setError("Completá provincia, ciudad/municipio, calle y número para cambiar la dirección.");
+      if (!street.trim() || !streetNum) {
+        return setError("Completá calle y número (podés elegir desde el buscador).");
       }
-
-      // geocodificá para lat/lon (usando tu proxy de Mapbox)
-      const coords = await geocodeAR({
-        provinceName: loc.provinceName!,
-        municipioName: loc.municipioName!,
-        street,
-        number: streetNum,
-      });
-
-      const address: any = {
+      payload.address = {
         street: street.trim(),
         streetNum: Number(streetNum),
         addressDesc: addressDesc.trim() || null,
-        provinceName: loc.provinceName,
-        municipioName: loc.municipioName,
-        georef: {
-          provinceId: loc.provinceId ?? null,
-          municipioId: loc.municipioId ?? null,
-        },
-        lat: coords?.lat ?? null,
-        lon: coords?.lon ?? null,
+        lat,     // pueden ir null si no seleccionó del buscador
+        lon,
+        cityName,
+        provinceName,
+        neighborhoodName,
       };
-
-      if (idCity) address.idCity = Number(idCity); 
-
-      payload.address = address;
     }
 
     setLoading(true);
     try {
       const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`; 
+      if (token) headers["Authorization"] = `Bearer ${token}`;
 
       const res = await fetch(`${API}/events/${eventId}`, {
         method: "PUT",
@@ -311,43 +371,58 @@ export default function EditEventDialog({
               <Input id="endsAt" type="datetime-local" value={endsAtLocal} onChange={(e) => setEndsAtLocal(e.target.value)} />
             </div>
 
-            {/* Cambiar dirección (opcional) */}
+            {/* Dirección actual + Cambiar dirección */}
             <div className="md:col-span-2 space-y-3 border-t pt-4">
+              {currentAddress && (
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium">Dirección actual:</span> {currentAddress}
+                </p>
+              )}
               <div className="flex items-center gap-2">
                 <Checkbox id="chgaddr" checked={changeAddress} onCheckedChange={(v) => setChangeAddress(Boolean(v))} />
-                <Label htmlFor="chgaddr" className="cursor-pointer flex items-center gap-2"><MapPin className="h-4 w-4" /> Cambiar dirección</Label>
+                <Label htmlFor="chgaddr" className="cursor-pointer flex items-center gap-2">
+                  <MapPin className="h-4 w-4" /> Cambiar dirección
+                </Label>
               </div>
 
               {changeAddress && (
                 <div className="grid grid-cols-1 gap-4">
-                  <LocationCascade
-                    proxyBaseUrl="/api/georef"
-                    geocodeBaseUrl="/api/geocode/search"
-                    className="w-full"
-                    onChange={(val) => {
-                      setLoc({
-                        provinceId: val.provinceId ?? null,
-                        provinceName: val.provinceName ?? null,
-                        municipioId: val.municipioId ?? null,
-                        municipioName: val.municipioName ?? null,
-                        idCity: val.idCity ?? null,
-                      });
-                      setIdCity(val.idCity ? String(val.idCity) : "");
-                    }}
-                  />
+                  <div>
+                    <Label className="mb-1 block">Buscar dirección</Label>
+                    <MapboxSearchBox
+                      accessToken={MAPBOX_TOKEN}
+                      placeholder="Escribí la dirección (ej. 'Av. Corrientes 1234')"
+                      country="AR"
+                      language="es"
+                      limit={5}
+                      types="address,poi"
+                      className="w-full"
+                      onRetrieve={handleRetrieve}
+                    />
+                    {(lat != null && lon != null) && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Coordenadas: <span className="font-mono">lat {lat?.toFixed(6)}, lon {lon?.toFixed(6)}</span>
+                      </p>
+                    )}
+                    {(cityName || provinceName || neighborhoodName) && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {neighborhoodName ? `${neighborhoodName}, ` : ""}{cityName || "—"}{cityName ? ", " : " "}{provinceName || "—"}
+                      </p>
+                    )}
+                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-2 md:col-span-2">
                       <Label htmlFor="street">Calle</Label>
-                      <Input id="street" value={street} onChange={(e) => setStreet(e.target.value)} />
+                      <Input id="street" value={street} onChange={(e) => setStreet(e.target.value)} placeholder="Av. Corrientes" />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="streetNum">Número</Label>
-                      <Input id="streetNum" inputMode="numeric" pattern="[0-9]*" value={streetNum} onChange={(e) => setStreetNum(e.target.value.replace(/[^0-9]/g, ""))} />
+                      <Input id="streetNum" inputMode="numeric" pattern="[0-9]*" value={streetNum} onChange={(e) => setStreetNum(e.target.value.replace(/[^0-9]/g, ""))} placeholder="1234" />
                     </div>
                     <div className="space-y-2 md:col-span-3">
                       <Label htmlFor="addressDesc">Referencia (opcional)</Label>
-                      <Input id="addressDesc" value={addressDesc} onChange={(e) => setAddressDesc(e.target.value)} />
+                      <Input id="addressDesc" value={addressDesc} onChange={(e) => setAddressDesc(e.target.value)} placeholder="Piso 2, puerta negra" />
                     </div>
                   </div>
                 </div>

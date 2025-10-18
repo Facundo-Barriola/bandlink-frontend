@@ -25,3 +25,24 @@ function dataToUrl(d) {
   if (d?.chatId) return `/messages/${d.chatId}`;
   return "/";
 }
+
+self.addEventListener("push", (event) => {
+  const data = (() => {
+    try { return event.data?.json() || {}; } catch { return {}; }
+  })();
+
+  event.waitUntil((async () => {
+    // Mostrar la notificación como siempre
+    await self.registration.showNotification(data.title || "BandLink", {
+      body: data.body || "",
+      data: data.data || {},
+      icon: "/icons/icon-192.png",
+    });
+
+    // Avisar a las pestañas abiertas que hay novedades
+    const clientsList = await self.clients.matchAll({ includeUncontrolled: true, type: "window" });
+    clientsList.forEach((client) => {
+      client.postMessage({ type: "PUSH_NOTIFICATION", payload: data });
+    });
+  })());
+});

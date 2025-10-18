@@ -16,6 +16,7 @@ export async function registerPush(vapidPublicKey: string) {
     userAgent: navigator.userAgent,
   };
 
+  
   await fetch(`${process.env.NEXT_PUBLIC_API_URL}/push/subscribe`, {
     method: "POST",
     credentials: "include",           
